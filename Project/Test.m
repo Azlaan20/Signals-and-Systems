@@ -75,8 +75,8 @@ classdef Test < matlab.apps.AppBase
             % Preallocate arrays for filter coefficients
             B = cell(1, length(center_frequencies));
             A = cell(1, length(center_frequencies));
-            f1 = [33.21, 131.79, 527.15, 2108.6, 8434.3];
-            f2 = [119.51, 474.25, 1897.0, 7588.0, 30352.1];
+            f1 = [44.55, 176.78, 707.11, 2828.43, 11313.71];
+            f2 = [89.10, 353.55, 1414.21, 5656.85, 22627.42];
 
             % Design Butterworth filters
             for i = 1:length(center_frequencies)
@@ -349,18 +349,14 @@ classdef Test < matlab.apps.AppBase
             app.player = [];
             app.timerObj = [];
 
-            % Clear Meter
-            %app.Meter = []; 
-            
             % Reset sliders and edit fields
             for i = 1:5
                 app.(sprintf('Slider_%d', i)).Value = 0;
                 app.(sprintf('EditField_%d', i)).Value = num2str(0);
-            end
 
-            % Clear UIAxes1-5
-            for i = 1:5
-                clf(app.(sprintf('UIAxes%d', i)));
+                % Clear both plot and axes
+                plot(app.(sprintf('UIAxes%d', i)), NaN, NaN);
+                cla(app.(sprintf('UIAxes%d', i)));
             end
         end
     end
@@ -374,7 +370,7 @@ classdef Test < matlab.apps.AppBase
             % Create UIFigure and hide until all components are created
             app.UIFigure = uifigure('Visible', 'off');
             app.UIFigure.Position = [100 100 1137 553];
-            app.UIFigure.Name = 'MATLAB App';
+            app.UIFigure.Name = '5 Band Audio Equaliser';
 
             % Create UIAxes
             app.UIAxes1 = uiaxes(app.UIFigure);
@@ -606,7 +602,7 @@ classdef Test < matlab.apps.AppBase
         % Construct app
         function app = Test
             % Close all existing instances of the app
-            existingApps = findall(0, 'Type', 'figure', 'Name', 'MATLAB App');
+            existingApps = findall(0, 'Type', 'figure', 'Name', '5 Band Audio Equaliser');
             delete(existingApps);
 
             % Create UIFigure and components
