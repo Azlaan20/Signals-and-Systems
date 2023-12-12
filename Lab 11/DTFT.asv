@@ -1,0 +1,7 @@
+function X = DTFT(x,N)
+syms w
+for n = 1:N
+    X = X + (x(n) .* 
+end
+
+end
