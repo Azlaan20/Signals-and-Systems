@@ -19,7 +19,7 @@ classdef Test < matlab.apps.AppBase
         EditField_2          matlab.ui.control.EditField
         Slider_2             matlab.ui.control.Slider
         Band2fc250HzLabel    matlab.ui.control.Label
-        EditField            matlab.ui.control.EditField
+        EditField_1            matlab.ui.control.EditField
         Band1fc63HzLabel     matlab.ui.control.Label
         Slider_1             matlab.ui.control.Slider
         Meter                audio.ui.control.Meter
@@ -27,7 +27,7 @@ classdef Test < matlab.apps.AppBase
         UIAxes4              matlab.ui.control.UIAxes
         UIAxes3              matlab.ui.control.UIAxes
         UIAxes2              matlab.ui.control.UIAxes
-        UIAxes               matlab.ui.control.UIAxes
+        UIAxes1               matlab.ui.control.UIAxes
 
         % Additional properties for storing data
         audioFilePath
@@ -68,7 +68,7 @@ classdef Test < matlab.apps.AppBase
             end
             % Design and apply filters here
             center_frequencies = [63, 250, 1000, 4000, 16000];
-            Q = 0.73;
+            Q = sqrt(2);
             desired_order = 3;
             Fs = 62000;
 
@@ -102,11 +102,12 @@ classdef Test < matlab.apps.AppBase
 
             % Plot the original signal
             t_original = (0:length(app.audioSignal)-1) / app.sampleRate;
-            clf(app.UIAxes)
-            plot(app.UIAxes, t_original, app.audioSignal);
-            title(app.UIAxes, 'Original Signal');
-            xlabel(app.UIAxes, 'Time (s)');
-            ylabel(app.UIAxes, 'Amplitude');
+            clf(app.UIAxes1)
+            plot(app.UIAxes1, t_original, app.audioSignal);
+            title(app.UIAxes1, 'Original Signal');
+            xlabel(app.UIAxes1, 'Time (s)');
+            ylabel(app.UIAxes1, 'Amplitude');
+            axis(app.UIAxes1, 'tight');
 
             % Plot the combined adjusted signal on UIAxes2
             t_adjusted = (0:length(combined_output)-1) / app.sampleRate;
@@ -115,6 +116,7 @@ classdef Test < matlab.apps.AppBase
             title(app.UIAxes2, 'Combined Adjusted Signal');
             xlabel(app.UIAxes2, 'Time (s)');
             ylabel(app.UIAxes2, 'Amplitude');
+            axis(app.UIAxes2, 'tight');
 
             % Plot the input spectrum on UIAxes3
             Audio_len = length(app.audioSignal);
@@ -127,6 +129,7 @@ classdef Test < matlab.apps.AppBase
             title(app.UIAxes3, 'Input Spectrum');
             xlabel(app.UIAxes3, 'Frequency (Hz)');
             ylabel(app.UIAxes3, 'Amplitude');
+            axis(app.UIAxes3, 'tight');
 
             % Plot the output spectrum on UIAxes4
             Audio_len_combined = length(combined_output);
@@ -139,6 +142,30 @@ classdef Test < matlab.apps.AppBase
             title(app.UIAxes4, 'Output Spectrum');
             xlabel(app.UIAxes4, 'Frequency (Hz)');
             ylabel(app.UIAxes4, 'Amplitude');
+            axis(app.UIAxes4, 'tight');
+
+            % Plot the characteristic filter response on UIAxes5
+            combined_response = zeros(size(app.audioSignal));
+
+            for i = 1:length(center_frequencies)
+                % Calculate the frequency response of the filter
+                [H, F] = freqz(B{i}, A{i}, length(app.audioSignal), app.sampleRate);
+
+                % Multiply by gain from the corresponding slider
+                gain = app.(['Slider_', num2str(i)]).Value; % Access slider value dynamically
+                H = H * 10^(gain/20); % Convert dB to linear scale
+
+                % Sum the adjusted responses
+                combined_response = combined_response + abs(H);
+            end
+
+            % Plot the characteristic filter response on UIAxes5
+            clf(app.UIAxes5);
+            plot(app.UIAxes5, F, combined_response, 'b');
+            title(app.UIAxes5, 'Characteristic Filter Response');
+            xlabel(app.UIAxes5, 'Frequency (Hz)');
+            ylabel(app.UIAxes5, 'Magnitude');
+            axis(app.UIAxes5, 'tight');
         end
 
         % Value changed function: Slider_1
@@ -147,7 +174,7 @@ classdef Test < matlab.apps.AppBase
             sliderValue = app.Slider_1.Value;
 
             % Display the value in the edit field
-            app.EditField.Value = num2str(sliderValue);
+            app.EditField_1.Value = num2str(sliderValue);
         end
 
         % Value changed function: Slider_2
@@ -189,7 +216,7 @@ classdef Test < matlab.apps.AppBase
         % Value changed function: EditField_1
         % Value changed function: EditField_1
         function EditField_1ValueChanged(app, event)
-            editfieldvalue = str2double(app.EditField.Value);
+            editfieldvalue = str2double(app.EditField_1.Value);
 
             % Check if the value is within the slider limits
             editfieldvalue = max(min(editfieldvalue, app.Slider_1.Limits(2)), app.Slider_1.Limits(1));
@@ -308,7 +335,34 @@ classdef Test < matlab.apps.AppBase
             end
         end
 
+        % Button pushed function: RESETButton
+        function RESETButtonPushed(app, event)
+            % Stop playback if a song is playing
+            if ~isempty(app.player) && isplaying(app.player)
+                stop(app.player);
+            end
 
+            % Clear stored data
+            app.audioFilePath = '';
+            app.audioSignal = [];
+            app.sampleRate = [];
+            app.player = [];
+            app.timerObj = [];
+
+            % Clear Meter
+            %app.Meter = []; 
+            
+            % Reset sliders and edit fields
+            for i = 1:5
+                app.(sprintf('Slider_%d', i)).Value = 0;
+                app.(sprintf('EditField_%d', i)).Value = num2str(0);
+            end
+
+            % Clear UIAxes1-5
+            for i = 1:5
+                clf(app.(sprintf('UIAxes%d', i)));
+            end
+        end
     end
 
     % Component initialization
@@ -323,18 +377,18 @@ classdef Test < matlab.apps.AppBase
             app.UIFigure.Name = 'MATLAB App';
 
             % Create UIAxes
-            app.UIAxes = uiaxes(app.UIFigure);
-            title(app.UIAxes, 'Input Signal')
-            xlabel(app.UIAxes, 'X')
-            ylabel(app.UIAxes, 'Y')
-            zlabel(app.UIAxes, 'Z')
-            app.UIAxes.AmbientLightColor = [0 0 0];
-            app.UIAxes.Box = 'on';
-            app.UIAxes.XGrid = 'on';
-            app.UIAxes.XMinorGrid = 'on';
-            app.UIAxes.YGrid = 'on';
-            app.UIAxes.YMinorGrid = 'on';
-            app.UIAxes.Position = [26 299 300 197];
+            app.UIAxes1 = uiaxes(app.UIFigure);
+            title(app.UIAxes1, 'Input Signal')
+            xlabel(app.UIAxes1, 'X')
+            ylabel(app.UIAxes1, 'Y')
+            zlabel(app.UIAxes1, 'Z')
+            app.UIAxes1.AmbientLightColor = [0 0 0];
+            app.UIAxes1.Box = 'on';
+            app.UIAxes1.XGrid = 'on';
+            app.UIAxes1.XMinorGrid = 'on';
+            app.UIAxes1.YGrid = 'on';
+            app.UIAxes1.YMinorGrid = 'on';
+            app.UIAxes1.Position = [26 299 300 197];
 
             % Create UIAxes2
             app.UIAxes2 = uiaxes(app.UIFigure);
@@ -412,10 +466,10 @@ classdef Test < matlab.apps.AppBase
             app.Band1fc63HzLabel.Text = {'Band 1 '; 'fc = 63 Hz'};
 
             % Create EditField
-            app.EditField = uieditfield(app.UIFigure, 'text');
-            app.EditField.Position = [682 321 55 22];
-            app.EditField.ValueChangedFcn = createCallbackFcn(app, @EditField_1ValueChanged, true);
-            app.EditField.Value = '0';  % Set the default value to '0'
+            app.EditField_1 = uieditfield(app.UIFigure, 'text');
+            app.EditField_1.Position = [682 321 55 22];
+            app.EditField_1.ValueChangedFcn = createCallbackFcn(app, @EditField_1ValueChanged, true);
+            app.EditField_1.Value = '0';  % Set the default value to '0'
 
             % Create Band2fc250HzLabel
             app.Band2fc250HzLabel = uilabel(app.UIFigure);
@@ -527,6 +581,7 @@ classdef Test < matlab.apps.AppBase
 
             % Create RESETButton
             app.RESETButton = uibutton(app.UIFigure, 'push');
+            app.RESETButton.ButtonPushedFcn = createCallbackFcn(app, @RESETButtonPushed, true);
             app.RESETButton.BackgroundColor = [0 0.4471 0.7412];
             app.RESETButton.FontColor = [1 1 1];
             app.RESETButton.Position = [888 10 107 41];
