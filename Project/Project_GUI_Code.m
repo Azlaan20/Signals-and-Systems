@@ -34,6 +34,8 @@ classdef Project_GUI_Code < matlab.apps.AppBase
         audioFilePath
         audioSignal
         sampleRate
+        fileReader
+        deviceWriter
     end
 
     properties (Access = private)
@@ -164,7 +166,25 @@ classdef Project_GUI_Code < matlab.apps.AppBase
 
         % Button pushed function: PLOTButton
         function PLOTButtonPushed(app, event)
-            app.audioSignal = app.TrackDropDown.Value;
+            % Get the selected MP3 file name from the dropdown
+            selectedTrack = app.TrackDropDown.Value;
+
+            % Check if a song is selected
+            if isempty(selectedTrack)
+                disp('Please select a song from the dropdown.');
+                return;
+            end
+
+            % Construct the full path to the selected MP3 file
+            filePath = fullfile('C:\Users\Azlaan\Music\', selectedTrack); 
+
+            % Read the audio signal from the selected MP3 file
+            try
+                [app.audioSignal, app.sampleRate] = audioread(filePath);
+            catch
+                disp('Error loading the selected song.');
+                return;
+            end
 
             if isempty(app.audioSignal)
                 disp('Please load a song first.');
@@ -375,12 +395,12 @@ classdef Project_GUI_Code < matlab.apps.AppBase
             selectedFile = fullfile(folderPath, char(app.TrackDropDown.Value));
 
             % Acquiring the audio file
-            fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
-            deviceWriter = audioDeviceWriter('SampleRate', fileReader.SampleRate);
+            app.fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
+            app.deviceWriter = audioDeviceWriter('SampleRate', app.fileReader.SampleRate);
 
             app.PLAYButton.Text = 'PAUSE';
             app.isPlay = 1;
-            app.sampleRate = fileReader.SampleRate;
+            app.sampleRate = app.fileReader.SampleRate;
             Fs = app.fs;
 
             %Initializing the delays
@@ -405,9 +425,9 @@ classdef Project_GUI_Code < matlab.apps.AppBase
             i = 0;
 
             %Playback loop
-            while ~isDone(fileReader)
+            while ~isDone(app.fileReader)
                 %Acquiring the succeeding frame
-                xk = fileReader();
+                xk = app.fileReader();
 
                 if length(xk(1,:))~=2
                     xk = [xk,xk];
@@ -464,7 +484,7 @@ classdef Project_GUI_Code < matlab.apps.AppBase
                 end
 
                 %Playback of frame
-                deviceWriter([0.25*yk1',0.25*yk2']);
+                app.deviceWriter([0.25*yk1',0.25*yk2']);
 
                 %Delay updates
                 xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
@@ -479,8 +499,8 @@ classdef Project_GUI_Code < matlab.apps.AppBase
 
 
                 if app.isStop == 1
-                    release(fileReader);
-                    release(deviceWriter);
+                    release(app.fileReader);
+                    release(app.deviceWriter);
                     app.PLAYButton.Text = 'PLAY';
                     app.isPlay = 0;
                     app.isStop = 0;
@@ -490,8 +510,8 @@ classdef Project_GUI_Code < matlab.apps.AppBase
             end
 
 
-            release(fileReader);
-            release(deviceWriter);
+            release(app.fileReader);
+            release(app.deviceWriter);
 
             app.PLAYButton.Text = 'PLAY';
             app.isPlay = 0;
@@ -500,8 +520,8 @@ classdef Project_GUI_Code < matlab.apps.AppBase
                     app.isPlay == 1
                 app.PLAYButton.Text = 'PAUSE';
             elseif app.isStop == 1
-                release(fileReader);
-                release(deviceWriter);
+                release(app.fileReader);
+                release(app.deviceWriter);
                 app.PLAYButton.Text = 'PLAY';
                 app.isPlay = 0;
                 app.isStop = 0;
@@ -512,17 +532,19 @@ classdef Project_GUI_Code < matlab.apps.AppBase
 
         % Button pushed function: RESETButton
         function RESETButtonPushed(app, event)
-            % Stop playback if a song is playing
-            if ~isempty(app.player) && isplaying(app.player)
-                stop(app.player);
+            % Stop the song if it is currently playing
+            if app.isPlay
+                app.isStop = 1;
             end
 
             % Clear stored data
-            app.audioFilePath = '';
+            app.TrackDropDown.Value = {}; % Clear the selected audio file path
+
             app.audioSignal = [];
             app.sampleRate = [];
-            app.player = [];
-            app.timerObj = [];
+
+            release(app.fileReader);
+            release(app.deviceWriter);
 
             % Reset sliders and edit fields
             for i = 1:5
@@ -534,6 +556,7 @@ classdef Project_GUI_Code < matlab.apps.AppBase
                 cla(app.(sprintf('UIAxes%d', i)));
             end
         end
+
     end
 
     % Component initialization
