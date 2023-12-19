@@ -269,8 +269,8 @@ classdef Test < matlab.apps.AppBase
             % Preallocate arrays for filter coefficients
             B = cell(1, length(center_frequencies));
             A = cell(1, length(center_frequencies));
-            f1 = [33.21, 131.79, 527.15, 2108.6, 8434.3];
-            f2 = [119.51, 474.25, 1897.0, 7588.0, 30352.1];
+            f1 = [44.55, 176.78, 707.11, 2828.43, 11313.71];
+            f2 = [89.10, 353.55, 1414.21, 5656.85, 22627.42];
 
             % Design Butterworth filters
             for i = 1:length(center_frequencies)

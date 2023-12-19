@@ -1,693 +1,806 @@
 classdef app1gui < matlab.apps.AppBase
-    properties (Access = public)
-        UIFigure    matlab.ui.Figure
-        Image   matlab.ui.control.image
-        Slider_1 matlab.ui.control.Slider
-        Slider_2 matlab.ui.control.Slider
-        Slider_3 matlab.ui.control.Slider
-        Slider_4 matlab.ui.control.Slider
-        Slider_5 matlab.ui.control.Slider
 
-        UIAxes matlab.ui.control.UIAxes
-        TrackDropDown matlab.ui.control.DropDown
-        PlayButton matlab.ui.control.Button
-        StopButton matlab.ui.control.Button
-        DropDown matlab.ui.control.DropDown
-        RecButton matlab.ui.control.Button
-        Lamp matlab.ui.control.Lamp
-        Switch matlab.ui.control.RockerSwitch
-        Knob matlab.ui.control.Knob
-        Image2 matlab.ui.control.Image
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure             matlab.ui.Figure
+        TrackDropDown       matlab.ui.control.DropDown
+        SongSelectDropDownLabel  matlab.ui.control.Label
+        PLOTButton           matlab.ui.control.Button
+        RESETButton          matlab.ui.control.Button
+        PLAYButton           matlab.ui.control.Button
+        LOADButton           matlab.ui.control.Button
+        EditField_5          matlab.ui.control.EditField
+        Slider_5             matlab.ui.control.Slider
+        Band5fc16000HzLabel  matlab.ui.control.Label
+        EditField_4          matlab.ui.control.EditField
+        Slider_4             matlab.ui.control.Slider
+        Band4fc4000HzLabel   matlab.ui.control.Label
+        EditField_3          matlab.ui.control.EditField
+        Slider_3             matlab.ui.control.Slider
+        Band3fc1000HzLabel   matlab.ui.control.Label
+        EditField_2          matlab.ui.control.EditField
+        Slider_2             matlab.ui.control.Slider
+        Band2fc250HzLabel    matlab.ui.control.Label
+        EditField_1            matlab.ui.control.EditField
+        Band1fc63HzLabel     matlab.ui.control.Label
+        Slider_1             matlab.ui.control.Slider
+        UIAxes5              matlab.ui.control.UIAxes
+        UIAxes4              matlab.ui.control.UIAxes
+        UIAxes3              matlab.ui.control.UIAxes
+        UIAxes2              matlab.ui.control.UIAxes
+        UIAxes1               matlab.ui.control.UIAxes
+
+        % Additional properties for storing data
+        audioFilePath
+        audioSignal
+        sampleRate
     end
 
     properties (Access = private)
-
-        isRec = 0
-        isPlay = 0;
-        fs = 44100;
-        fk = [63,70.8,250,282,1000,1120,4000,4470,16000,17800];
-        wn = 2 * pi * [63,66.9,70.8,75,250,266,282,299,1000,1060,1120,1190,4000,4220,4470,4730,16000,16800,17800,18800];
         fg = [63,250,1000,4000,16000];
+        fk = [63, 70.8, 250, 282, 1000, 1120, 4000, 4470, 16000, 17800];
+        fs = 44100;
+        wn = 2*pi*[63, 66.9, 70.8, 75, 250, 266, 282, 299, 1000, 1060, 1120, 1180, 4000, 4220, 4470, 4730, 16000, 16800, 17800, 18800];
         isStop = 0;
+        isPlay = 0;
     end
 
+    % Callbacks that handle component events
     methods (Access = private)
 
         function a = den(app,k,Fs)
 
             thetak = 2*pi*app.fk(k)/Fs;
-            if k>1 && k<11
+
+            if k>1 && k<10
 
                 dthetak = (2*pi*app.fk(k+1)/Fs-2*pi*app.fk(k-1)/Fs)/2;
+
             elseif k == 1
+
                 dthetak = 2*pi*app.fk(2)/Fs-2*pi*app.fk(1)/Fs;
             else
-                dthetak = 2*pi*app.fk(11)/Fs - 2*pi*app*fk(10)/Fs;
+
+                dthetak = 2*pi*app.fk(10)/Fs-2*pi*app.fk(9)/Fs;
             end
+
             pk = exp(-dthetak/2);
             a = [1 -2*pk*cos(thetak) pk^2];
         end
 
-        function Mrplus = Mrp(app,Fs)
-            M = zeros(20,21);
-            M(:,22) = ones(20,1);
-            sqW = Weight(app, app.Slider_1.Value,app.Slider_2.Value,app.Slider_3.Value,app.Slider_4.Value,app.Slider_5.Value);
+        function Mrplus = Mrp(app, Fs)
+            M = zeros(20, 21);
+            M(:, 22) = ones(20, 1);
+            sqW = Weight(app, app.Slider_1.Value, app.Slider_2.Value, app.Slider_3.Value, app.Slider_4.Value, app.Slider_5.Value);
 
             for n = 1:20
-                for k = 1:11
-                    M(n, 2*k-1) = 1/(den(app,k,Fs)*[1; exp(-app,wn(n)/Fs*1i);exp(-2*app.wn(n)/Fs*1i)]);
-                    M(n,2*k) = exp(-app.wn(n)/Fs*1i)/(den(app,k,Fs)*[1;exp(-app.wn(n)/Fs*1i);exp(-2*app.wn(n)/Fs*1i)]);
+                for k = 1:10
+                    M(n, 2 * k - 1) = 1 / (den(app, k, Fs) * [1; exp(-app.wn(n) / Fs * 1i); exp(-2 * app.wn(n) / Fs * 1i)]);
+                    M(n, 2 * k) = exp(-app.wn(n) / Fs * 1i) / (den(app, k, Fs) * [1; exp(-app.wn(n) / Fs * 1i); exp(-2 * app.wn(n) / Fs * 1i)]);
                 end
-                M(n,:) = M(n,:)*sqW(n);
+                M(n, :) = M(n, :) * sqW(n);
             end
 
             Mr = [real(M); imag(M)];
-            Mrplus = (transpose(Mr)*Mr)\transpose(Mr);
+
+            % Use the pseudo-inverse to improve stability
+            Mrplus = pinv(transpose(Mr) * Mr) * transpose(Mr);
         end
 
+
+        %Calculation of the target response vector
         function htr = target(app,G1,G2,G3,G4,G5)
-            y = 10.^(1/20*pchip([-flip(app.fg) app.fg],[flip([G1,G2,G3,G4,G5]) [G1,G2,G3,G4,G5]], linspace(-app.fs/2,app.fs/2,2^16)))';
+
+            y = 10.^(1/20*pchip([-flip(app.fg) app.fg],[flip([G1,G2,G3,G4,G5]) [G1,G2,G3,G4,G5]],linspace(-app.fs/2,app.fs/2,2^16)))';
+
             phase = unwrap(imag(-hilbert(log(y))));
-            phase = phase(32769:64124);
+            % Adjust the range based on the actual length of the 'phase' vector
+            phase_start = round(32769 * length(phase) / 2^16);
+            phase_end = round(64124 * length(phase) / 2^16);
+            phase = phase(phase_start:phase_end);
 
             i = 1;
             fi = zeros(1,20);
+
             for w = app.wn/(2*pi)
                 if round(w*length(phase)/21100) > length(phase)
                     fi(i) = phase(length(phase));
                 else
                     fi(i) = phase(round(w*length(phase)/21100));
                 end
-                i = i + 1;
+                i=i+1;
             end
-            htr = [real(exp(1i*fi')); imag(exp(1i*fi'))];
+
+            htr = [real(exp(1i*fi'));imag(exp(1i*fi'))];
+
         end
 
-        function popt = num(app, htr, Mrplus)
+        %Calculation of the optimal numerator coefficients
+        function popt = num(~,htr,Mrplus)
             popt = Mrplus*htr;
         end
 
+        %Filtering process algorithm
         function yk = filterNew(app,bWithIndex,xk1,ybuffer,xbuffer,Fs,n)
-            yk = filter(bWithIndex', den(app,n,Fs), xk1,filtic(bWithIndex', den(app,n,Fs), ybuffer, xbuffer));
+            yk = filter(bWithIndex',den(app,n,Fs),xk1,filtic(bWithIndex',den(app,n,Fs),ybuffer,xbuffer));
         end
 
+        %Calculation of the Weighting factors
         function sqW = Weight(app,G1,G2,G3,G4,G5)
-            ht = 10.^(1/20*pchip([10 app.fg], [G1,G2,G3,G4,G5], app.wn/(2*pi)))';
+            ht = 10.^(1/20*pchip([app.fg],[G1,G2,G3,G4,G5],app.wn/(2*pi)))';
             sqW1 = zeros(20,1);
-
             for i = 1:20
                 sqW1(i) = 1/ht(i);
             end
-
             sqW = sqW1;
         end
-    end
 
-    methods (Access = private)
-        function Start(app)
-            app.Lamp.Enable = 'off';
-            tracks = struct2cell(dir('*.mp3'));
-            tracks = tracks(1,:);
-            app.TrackDropDown.Items = tracks;
-            wav = struct2cell(dir('*.wav'));
-            wav = wav(1,:);
+        % Button pushed function: LOADButton
+        function LOADButtonPushed(app, ~)
+            % Set the path to the desired directory
+            folderPath = 'C:\Users\Azlaan\Music\';
 
-            for i = 1:length(wav)
-                app.TrackDropDown.Items(i+length(tracks(1,:))) = wav(i);
-            end
+            % List MP3 files
+            mp3Files = struct2cell(dir(fullfile(folderPath, '*.mp3')));
+            mp3Files = mp3Files(1, :);
 
-            if isempty(app.TrackDropDown.Items) == 1
-                uialert(app.UIFigure,'You current folder does not contain any audio files', 'Info', 'Icon', 'info');
+            % List WAV files
+            wavFiles = struct2cell(dir(fullfile(folderPath, '*.wav')));
+            wavFiles = wavFiles(1, :);
+
+            % Combine MP3 and WAV files into a single list
+            audioFiles = [mp3Files, wavFiles];
+
+            % Update app.TrackDropDown.Items
+            app.TrackDropDown.Items = audioFiles;
+
+            % Check if the list is empty and show a message if true
+            if isempty(app.TrackDropDown.Items)
+                uialert(app.UIFigure, ...
+                    ['Your current folder does not contain any audio files'], ...
+                    'Info', 'Icon', 'info');
             end
         end
 
-        function play(app,event)
-            if isempty(app.TrackDropDown.Items) == 2
-                uialert(app.UIFigure,'No audio file found','Error','Icon','error');
-            elseif app.isRec == 1
-                uialert(app.UIFigure,'Stop recording before playback of a file','Tip','Icon','warning');
-            elseif strcmp(app.PlayButton.Text,'Play') && app.isPlay == 0 && app.isRec == 0
-                %Acquiring Audio File
-                fileReader = dsp.AudioFileReader(char(app.TrackDropDown.Value),'SamplesPerFrame',1024);
-                deviceWriter = audioDeviceWriter('SampleRate',fileReader.SampleRate);
+        % Button pushed function: PLOTButton
+        function PLOTButtonPushed(app, event)
+            app.audioSignal = app.TrackDropDown.Value;
 
-                app.PlayButton.Text = 'Pause';
-                app.isPlay = 1;
-                app.fs = fileReader.SampleRate;
-                Fs = app.fs;
+            if isempty(app.audioSignal)
+                disp('Please load a song first.');
+                return;
+            end
+            % Design and apply filters here
+            center_frequencies = [63, 250, 1000, 4000, 16000];
+            Q = sqrt(2);
+            desired_order = 3;
+            Fs = 62000;
 
-                %Initializing the delays
-                xbuffer1 = 0;
-                xbuffer2 = 0;
-                ybuffer1 = zeros(19,3);
-                ybuffer2 = zeros(19,3);
+            % Preallocate arrays for filter coefficients
+            B = cell(1, length(center_frequencies));
+            A = cell(1, length(center_frequencies));
+            f1 = [44.55, 176.78, 707.11, 2828.43, 11313.71];
+            f2 = [89.10, 353.55, 1414.21, 5656.85, 22627.42];
 
-                S1 = app.Slider_1.Value;
-                S2 = app.Slider_2.Value;
-                S3 = app.Slider_3.Value;
-                S4 = app.Slider_4.Value;
-                S5 = app.Slider_5.Value;
+            % Design Butterworth filters
+            for i = 1:length(center_frequencies)
+                fc = center_frequencies(i);
+                [B{i}, A{i}] = butter(desired_order, [f1(i), f2(i)]/(Fs/2), 'bandpass');
+            end
 
-                Mrplus = Mrp(app,Fs);
+            % Apply filters to the input signal and multiply each band by the corresponding gain
+            filtered_signals = cell(1, length(center_frequencies));
+            combined_output = zeros(size(app.audioSignal));
 
-                b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
+            for i = 1:length(center_frequencies)
+                % Apply filter
+                filtered_signals{i} = filter(B{i}, A{i}, app.audioSignal);
 
-                dF = Fs/1024;
-                f = -Fs/2:dF:Fs/2-dF;
+                % Multiply by gain from the corresponding slider
+                gain = app.(['Slider_', num2str(i)]).Value; % Access slider value dynamically
+                filtered_signals{i} = filtered_signals{i} * 10^(gain/20); % Convert dB to linear scale
 
-                i = 0;
-                %Playback loop
-                while ~isDone(fileReader)
-                    xk = fileReader();
+                % Sum the adjusted signals
+                combined_output = combined_output + filtered_signals{i};
+            end
 
-                    if length(xk(1,:)) ~=2
-                        xk = [xk,xk];
-                        xk1 = xk(:,1)';
-                        xk2 = xk(:,2)';
+            % Plot the original signal
+            t_original = (0:length(app.audioSignal)-1) / app.sampleRate;
+            clf(app.UIAxes1)
+            plot(app.UIAxes1, t_original, app.audioSignal);
+            title(app.UIAxes1, 'Original Signal');
+            xlabel(app.UIAxes1, 'Time (s)');
+            ylabel(app.UIAxes1, 'Amplitude');
+            axis(app.UIAxes1, 'tight');
+
+            % Plot the combined adjusted signal on UIAxes2
+            t_adjusted = (0:length(combined_output)-1) / app.sampleRate;
+            clf(app.UIAxes2)
+            plot(app.UIAxes2, t_adjusted, combined_output);
+            title(app.UIAxes2, 'Combined Adjusted Signal');
+            xlabel(app.UIAxes2, 'Time (s)');
+            ylabel(app.UIAxes2, 'Amplitude');
+            axis(app.UIAxes2, 'tight');
+
+            % Plot the input spectrum on UIAxes3
+            Audio_len = length(app.audioSignal);
+            FFT_audio = fft(app.audioSignal);
+            P2_audio = abs(FFT_audio / Audio_len);
+            P1_audio = P2_audio(1:Audio_len/2+1);
+            P1_audio(2:end-1) = 2 * P1_audio(2:end-1);
+            freq_audio = app.sampleRate * (0:(Audio_len/2)) / Audio_len;
+            plot(app.UIAxes3, freq_audio, P1_audio);
+            title(app.UIAxes3, 'Input Spectrum');
+            xlabel(app.UIAxes3, 'Frequency (Hz)');
+            ylabel(app.UIAxes3, 'Amplitude');
+            axis(app.UIAxes3, 'tight');
+
+            % Plot the output spectrum on UIAxes4
+            Audio_len_combined = length(combined_output);
+            FFT_combined = fft(combined_output);
+            P2_combined = abs(FFT_combined / Audio_len_combined);
+            P1_combined = P2_combined(1:Audio_len_combined/2+1);
+            P1_combined(2:end-1) = 2 * P1_combined(2:end-1);
+            freq_combined = app.sampleRate * (0:(Audio_len_combined/2)) / Audio_len_combined;
+            plot(app.UIAxes4, freq_combined, P1_combined);
+            title(app.UIAxes4, 'Output Spectrum');
+            xlabel(app.UIAxes4, 'Frequency (Hz)');
+            ylabel(app.UIAxes4, 'Amplitude');
+            axis(app.UIAxes4, 'tight');
+
+            % Plot the characteristic filter response on UIAxes5
+            combined_response = zeros(size(app.audioSignal));
+
+            for i = 1:length(center_frequencies)
+                % Calculate the frequency response of the filter
+                [H, F] = freqz(B{i}, A{i}, length(app.audioSignal), app.sampleRate);
+
+                % Multiply by gain from the corresponding slider
+                gain = app.(['Slider_', num2str(i)]).Value; % Access slider value dynamically
+                H = H * 10^(gain/20); % Convert dB to linear scale
+
+                % Sum the adjusted responses
+                combined_response = combined_response + abs(H);
+            end
+
+            % Plot the characteristic filter response on UIAxes5
+            clf(app.UIAxes5);
+            plot(app.UIAxes5, F, combined_response, 'b');
+            title(app.UIAxes5, 'Characteristic Filter Response');
+            xlabel(app.UIAxes5, 'Frequency (Hz)');
+            ylabel(app.UIAxes5, 'Magnitude');
+            axis(app.UIAxes5, 'tight');
+        end
+
+        % Value changed function: Slider_1
+        function Slider_1ValueChanged(app, event)
+            % Get the current value of the slider
+            sliderValue = app.Slider_1.Value;
+
+            % Display the value in the edit field
+            app.EditField_1.Value = num2str(sliderValue);
+        end
+
+        % Value changed function: Slider_2
+        function Slider_2ValueChanged(app, event)
+            % Get the current value of the slider
+            sliderValue = app.Slider_2.Value;
+
+            % Display the value in the edit field
+            app.EditField_2.Value = num2str(sliderValue);
+        end
+
+        % Value changed function: Slider_3
+        function Slider_3ValueChanged(app, event)
+            % Get the current value of the slider
+            sliderValue = app.Slider_3.Value;
+
+            % Display the value in the edit field
+            app.EditField_3.Value = num2str(sliderValue);
+        end
+
+        % Value changed function: Slider_4
+        function Slider_4ValueChanged(app, event)
+            % Get the current value of the slider
+            sliderValue = app.Slider_4.Value;
+
+            % Display the value in the edit field
+            app.EditField_4.Value = num2str(sliderValue);
+        end
+
+        % Value changed function: Slider_5
+        function Slider_5ValueChanged(app, event)
+            % Get the current value of the slider
+            sliderValue = app.Slider_5.Value;
+
+            % Display the value in the edit field
+            app.EditField_5.Value = num2str(sliderValue);
+        end
+
+        % Value changed function: EditField_1
+        % Value changed function: EditField_1
+        function EditField_1ValueChanged(app, event)
+            editfieldvalue = str2double(app.EditField_1.Value);
+
+            % Check if the value is within the slider limits
+            editfieldvalue = max(min(editfieldvalue, app.Slider_1.Limits(2)), app.Slider_1.Limits(1));
+
+            % Update the corresponding slider
+            app.Slider_1.Value = editfieldvalue;
+        end
+
+        % Value changed function: EditField_2
+        function EditField_2ValueChanged(app, event)
+            editfieldvalue = str2double(app.EditField_2.Value);
+            editfieldvalue = max(min(editfieldvalue, app.Slider_2.Limits(2)), app.Slider_2.Limits(1));
+            app.Slider_2.Value = editfieldvalue;
+        end
+
+        % Value changed function: EditField_3
+        function EditField_3ValueChanged(app, event)
+            editfieldvalue = str2double(app.EditField_3.Value);
+            editfieldvalue = max(min(editfieldvalue, app.Slider_3.Limits(2)), app.Slider_3.Limits(1));
+            app.Slider_3.Value = editfieldvalue;
+        end
+
+        % Value changed function: EditField_4
+        function EditField_4ValueChanged(app, event)
+            editfieldvalue = str2double(app.EditField_4.Value);
+            editfieldvalue = max(min(editfieldvalue, app.Slider_4.Limits(2)), app.Slider_4.Limits(1));
+            app.Slider_4.Value = editfieldvalue;
+        end
+
+        % Value changed function: EditField_5
+        function EditField_5ValueChanged(app, event)
+            editfieldvalue = str2double(app.EditField_5.Value);
+            editfieldvalue = max(min(editfieldvalue, app.Slider_5.Limits(2)), app.Slider_5.Limits(1));
+            app.Slider_5.Value = editfieldvalue;
+        end
+
+        % Button pushed function: PLAYButton
+        function PLAYButtonPushed(app, ~)
+            app.audioSignal = app.TrackDropDown.Value;
+
+            % Check if a song is loaded
+            if isempty(app.audioSignal)
+                disp('Please load a song first.');
+                return;
+
+            elseif strcmp(app.PLAYButton.Text,'PLAY') && app.isPlay == 0
+
+            % Specify the folder path where audio files are stored
+            folderPath = 'C:\Users\Azlaan\Music\';
+
+            % Construct the full path to the selected audio file
+            selectedFile = fullfile(folderPath, char(app.TrackDropDown.Value));
+
+            % Acquiring the audio file
+            fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
+            deviceWriter = audioDeviceWriter('SampleRate', fileReader.SampleRate);
+
+            app.PLAYButton.Text = 'PAUSE';
+            app.isPlay = 1;
+            app.sampleRate = fileReader.SampleRate;
+            Fs = app.fs;
+
+            %Initializing the delays
+            xbuffer1 = 0;
+            xbuffer2 = 0;
+            ybuffer1 = zeros(10,3);
+            ybuffer2 = zeros(10,3);
+
+            S1 = app.Slider_1.Value;
+            S2 = app.Slider_2.Value;
+            S3 = app.Slider_3.Value;
+            S4 = app.Slider_4.Value;
+            S5 = app.Slider_5.Value;
+
+            Mrplus = Mrp(app,Fs);
+
+            b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
+
+            dF = Fs/1024;
+            f = -Fs/2:dF:Fs/2-dF;
+
+            i = 0;
+
+            %Playback loop
+            while ~isDone(fileReader)
+                %Acquiring the succeeding frame
+                xk = fileReader();
+
+                if length(xk(1,:))~=2
+                    xk = [xk,xk];
+                    xk1 = xk(:,1)';
+                    xk2 = xk(:,2)';
+                else
+                    xk1 = xk(:,1)';
+                    xk2 = xk(:,2)';
+                end
+
+                if strcmp(app.PLAYButton.Text,'PLAY') == 1
+                    %Pause loop
+                    while strcmp(app.PLAYButton.Text,'PLAY') == 1 && ...
+                            app.isStop == 0
+                        pause(1);
+                    end
+                end
+
+                pause(0);
+
+                %Checking if slider configuration changed
+                if app.Slider_1.Value ~= S1 || app.Slider_2.Value ~= S2 || app.Slider_3.Value ~= S3 || S4 ~= app.Slider_4.Value ||  S5 ~= app.Slider_5.Value 
+
+                    S1 = app.Slider_1.Value;
+                    S2 = app.Slider_2.Value;
+                    S3 = app.Slider_3.Value;
+                    S4 = app.Slider_4.Value;
+                    S5 = app.Slider_5.Value;
+
+                    %Calculating the new filters
+                    Mrplus = Mrp(app,Fs);
+                    b = num(app,target(app,S1,S2,S3,S4,S5), Mrplus);
+                end
+
+                %Filtering process
+                for n=1:11
+                    if n<11
+                        ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
+                        ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
                     else
-                        xk1 = xk(:,1)';
-                        xk2 = xk(:,2)';
+                        ykNew1(n,:) = xk1*b(22);
+                        ykNew2(n,:) = xk2*b(22);
                     end
-
-                    if strcmp(app.PlayButton.Text,'Play') == 1
-                        %Pause loop
-                        while strcmp(app.PlayButton.Text, ' Play') == 1 && app.isStop == 0
-                            pause(1);
-                        end
-                    end
-
-                    pause(0);
-
-                    %Check to see if the slider configuration is being
-                    %changed
-                    if app.Slider_1.Value ~= S1 || app.Slider_2 ~= S2 || app.Slider_3.Value ~= S3 || S4 ~= app.Slider_4.Value || S5 ~= app.Slider_5.Value
-                        S1 = app.Slider_1.Value;
-                        S2 = app.Slider_2.Value;
-                        S3 = app.Slider_3.Value;
-                        S4 = app.Slider_4.Value;
-                        S5 = app.Slider_5.Value;
-
-                        Mrplus = Mrp(app,Fs);
-                        b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
-                    end
-
-                    %Filtering process
-                    for n = 1:11
-                        if n<11
-                            ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
-                            ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
-                        else
-                            ykNew1(n,:) = xk1*b(22);
-                            ykNew2(n,:) = xk2*b(22);
-                        end
-                    end
-
-                    yk1 = 0;
-                    yk2 = 0;
-
-                    for n = 1:11
-                        yk1 = yk1 + ykNew1(n,:);
-                        yk2 = yk2 + ykNew2(n,:);
-                    end
-
-                    %Playback of frame
-                    deviceWriter([0.25*yk1',0.25*yk2']);
-
-                    %Delay updates
-                    xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
-                    xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
-
-                    for n = 1:10
-                        ybuffer1(n,:) = flip(ykNew1(n,(length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
-                        ybuffer2(n,:) = flip(ykNew2(n,(length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
-                    end
-
-                    %FFT Plot update if allowed
-                    if mod(i, 51 - round(app.Knob.Value)) == 0 && strcmp(app.Switch.Value,'On') == 1
-                        z = fftshift(fft(yk1));
-                        area(app.UIAxes,f,abs(z)/1024)
-                        drawnow limitrate;
-                    end
-
-                    if app.isStop == 1
-                        release(fileReader);
-                        release(deviceWriter);
-                        app.PlayButton.Text = 'Play';
-                        app.isPlay = 0;
-                        app.isStop = 0;
-                    end
-
-                    i = i+1;
 
                 end
 
-                release(fileReader);
-                release(deviceWriter);
+                yk1=0;
+                yk2=0;
 
-                app.PlayButton.Text = 'Play';
-                app.isPlay = 0;
+                for n=1:11
+                    yk1=yk1 + ykNew1(n,:);
 
-            elseif strcmp(app.PlayButton.Text,'Play') && app.isPlay == 1
-                app.PlayButton.Text = 'Pause';
+                    yk2=yk2 + ykNew2(n,:);
+                end
+
+                %Playback of frame
+                deviceWriter([0.25*yk1',0.25*yk2']);
+
+                %Delay updates
+                xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
+                xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
+                for n=1:10
+                    ybuffer1(n,:)=flip(ykNew1(n,...
+                        (length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
+
+                    ybuffer2(n,:)=flip(ykNew2(n,...
+                        (length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
+                end
+
+
+                if app.isStop == 1
+                    release(fileReader);
+                    release(deviceWriter);
+                    app.PLAYButton.Text = 'PLAY';
+                    app.isPlay = 0;
+                    app.isStop = 0;
+                end
+
+                i = i+1;
+            end
+
+
+            release(fileReader);
+            release(deviceWriter);
+
+            app.PLAYButton.Text = 'PLAY';
+            app.isPlay = 0;
+
+            elseif strcmp(app.PLAYButton.Text,'PLAY') && ...
+                    app.isPlay == 1
+                app.PLAYButton.Text = 'PAUSE';
             elseif app.isStop == 1
                 release(fileReader);
                 release(deviceWriter);
-                app.PlayButton.Text = 'Play';
+                app.PLAYButton.Text = 'PLAY';
                 app.isPlay = 0;
                 app.isStop = 0;
             else
-                app.PlayButton.Text = 'Play';
+                app.PLAYButton.Text = 'PLAY';
             end
         end
 
-        %Button pushed function: RecButton
-        function Rec(app, event)
-            if app.isPlay == 1
-                uialert(app.UIFigure,'Stop Playback before Recording', 'Tip', 'Icon','warning');
-            elseif app.isRec == 0
-                %Microphone Initialisation
-                deviceReader = audioDeviceReader(44100,1024,'NumChannels',2);
-                deviceWriter = audioDeviceWriter('SampleRate',deviceReader.SampleRate);
-                app.Lamp.Enable = 'on';
-                app.isRec = 1;
-                app.RecButton.Text = 'Stop';
-
-                %Initializing the delays
-                xbuffer1 = 0;
-                xbuffer2 = 0;
-                ybuffer1 = zeros(10,3);
-                ybuffer2 = zeros(10,3);
-
-                S1 = app.Slider_1.Value;
-                S2 = app.Slider_2.Value;
-                S3 = app.Slider_3.Value;
-                S4 = app.Slider_4.Value;
-                S5 = app.Slider_5.Value;
-
-                Fs = 44100;
-                app.fs = Fs;
-                Mrplus = Mrp(app,Fs);
-
-                b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
-
-                dF = Fs/1024;
-
-                f = -Fs/2:dF:Fs/2-dF;
-
-                i = 1;
-
-                %Record and playback loop
-                while app.isRec == 1
-
-                    %Acquiring the next frame
-                    xk = deviceReader();
-                    xk1 = xk(:,1)';
-                    xk2 = xk(:,2)';
-
-                    pause(0);
-
-                    %Checking if the slider configuration has been changed
-                    if app.Slider_1.Value ~= S1 || app.Slider_2.Value ~= S2 || app.Slider_3.Value ~= S3 || app.Slider_4.Value ~= S4 || app.Slider_5.Value ~= S5
-                        S1 = app.Slider_1.Value;
-                        S2 = app.Slider_2.Value;
-                        S3 = app.Slider_3.Value;
-                        S4 = app.Slider_4.Value;
-                        S5 = app.Slider_5.Value;
-
-                        %Calculations for the new filters
-                        Mrplus = Mrp(app,Fs);
-                        b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
-                    end
-
-                    %Filtering Process
-                    for n = 1:11
-                        if n<11
-                            ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
-                            ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
-                        else
-                            ykNew1(n,:) = xk1*b(22);
-                            ykNew2(n,:) = xk2*b(22);
-                        end
-                    end
-
-                    yk1 = 0;
-                    yk2 = 0;
-
-                    for n = 1:11
-                        yk1 = yk1 + ykNew1(n,:);
-                        yk2 = yk2 + ykNew2(n,:);
-                    end
-
-                    %Playback of frame
-                    deviceWriter([0.25*yk1',0.25*yk2']);
-
-                    %Updating the delays
-                    xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
-                    xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
-                    for n = 1:10
-                        ybuffer1(n,:) = flip(ykNew1(n,(length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
-                        ybuffer2(n,:) = flip(ykNew2(n,(length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
-                    end
-
-                    %FFT Plot Update if allowed
-                    if mod(i, 51-round(app.Knob.Value)) == 0 && strcmp(app.Switch.Value,'On') == 1
-                        z = fftshift(fft(yk1));
-                        area(app.UIAxes,f,abs(z)/1024)
-                        drawnow limitrate;
-                    end
-
-                    %Blinking of the lamp
-                    if mod(i,15) == 0
-                        if strcmp(app.Lamp.Enable,'on') == 1
-                            app.Lamp.Enable = 'off';
-                        else
-                            app.Lamp.Enable = 'on';
-                        end
-                    end
-
-                    i = i+1;
-                end
-                release(deviceReader);
-                release(deviceWriter);
-
-            else
-                app.isRec = 0;
-                app.RecButton.Text = 'Rec';
+        % Button pushed function: RESETButton
+        function RESETButtonPushed(app, event)
+            % Stop playback if a song is playing
+            if ~isempty(app.player) && isplaying(app.player)
+                stop(app.player);
             end
-        end
 
-        function Stop(app,event)
-            app.isStop = 1;
-        end
+            % Clear stored data
+            app.audioFilePath = '';
+            app.audioSignal = [];
+            app.sampleRate = [];
+            app.player = [];
+            app.timerObj = [];
 
-        %Value changed function: DropDown
-        %Setting the slider presets
-        function Preset (app,event)
-            value = app.DropDown.Value;
-            if strcmp('Rock',value) == 1
-                app.Slider_1.Value = 5;
-                app.Slider_2.Value = 0;
-                app.Slider_3.Value = -4;
-                app.Slider_4.Value = 2;
-                app.Slider_5.Value = 5;
+            % Reset sliders and edit fields
+            for i = 1:5
+                app.(sprintf('Slider_%d', i)).Value = 0;
+                app.(sprintf('EditField_%d', i)).Value = num2str(0);
 
-            elseif strcmp('Flat', value) == 1
-                app.Slider_1.Value = 0;
-                app.Slider_2.Value = 0;
-                app.Slider_3.Value = 0;
-                app.Slider_4.Value = 0;
-                app.Slider_5.Value = 0;
-
-            elseif strcmp('Pop', value) == 1
-                app.Slider_1.Value = 1;
-                app.Slider_2.Value = 3;
-                app.Slider_3.Value = -1;
-                app.Slider_4.Value = -1;
-                app.Slider_5.Value = -1;
-
-            elseif strcmp('Bass', value) == 1
-                app.Slider_1.Value = 12;
-                app.Slider_2.Value = 8;
-                app.Slider_3.Value = 2;
-                app.Slider_4.Value = -4;
-                app.Slider_5.Value = -10;
-
-            elseif strcmp('Treble', value) == 1
-                app.Slider_1.Value = -10;
-                app.Slider_2.Value = -6;
-                app.Slider_3.Value = 0;
-                app.Slider_4.Value = 9;
-                app.Slider_5.Value = 12;
-
-            elseif strcmp('Vocal', value) == 1
-                app.Slider_1.Value = -4;
-                app.Slider_2.Value = 5;
-                app.Slider_3.Value = 7;
-                app.Slider_4.Value = 0;
-                app.Slider_5.Value = -5;
-
-            elseif strcmp('Classical',value) == 1
-                app.Slider_1.Value = 1;
-                app.Slider_2.Value = 2;
-                app.Slider_3.Value = -6;
-                app.Slider_4.Value = 0;
-                app.Slider_5.Value = 0;
-
-            elseif strcmp('Hip-Hop',value) == 1
-                app.Slider_1.Value = 3;
-                app.Slider_2.Value = 0;
-                app.Slider_3.Value = -3;
-                app.Slider_4.Value = 1;
-                app.Slider_5.Value = 3;
-
-            elseif strcmp('Dance',value) == 1
-                app.Slider_1.Value = 7;
-                app.Slider_2.Value = 0;
-                app.Slider_3.Value = 0;
-                app.Slider_4.Value = 2;
-                app.Slider_5.Value = -2;
-
-            elseif strcmp('Jazz',value) == 1
-                app.Slider_1.Value = 3;
-                app.Slider_2.Value = 0;
-                app.Slider_3.Value = 3;
-                app.Slider_4.Value = 0;
-                app.Slider_5.Value = -1;
-
-            elseif strcmp('Powerful',value) == 1
-                app.Slider_1.Value = 7;
-                app.Slider_2.Value = -2;
-                app.Slider_3.Value = -4;
-                app.Slider_4.Value = 5;
-                app.Slider_5.Value = 8;
-
-            elseif strcmp('Shitty Music',value) == 1
-                app.Slider_1.Value = -13;
-                app.Slider_2.Value = -13;
-                app.Slider_3.Value = -13;
-                app.Slider_4.Value = -13;
-                app.Slider_5.Value = -13;
-
-            elseif strcmp('MUU', value) == 1
-                app.Slider_1.Value = 3;
-                app.Slider_2.Value = 12;
-                app.Slider_3.Value = -9;
-                app.Slider_4.Value = -5;
-                app.Slider_5.Value = 3;
+                % Clear both plot and axes
+                plot(app.(sprintf('UIAxes%d', i)), NaN, NaN);
+                cla(app.(sprintf('UIAxes%d', i)));
             end
-        end
-
-        %Value Changing Function: Slider 1
-        function Custom(app,event)
-            app.DropDown.Value = 'Custom';
-        end
-
-        %Value Changing Function: Slider 2
-        function Custom2(app,event)
-            app.DropDown.Value = 'Custom';
-        end
-
-        %Value Changing Function: Slider 3
-        function Custom3(app,event)
-            app.DropDown.Value = 'Custom';
-        end
-
-        %Value Changing Function: Slider 4
-        function Custom4(app,event)
-            app.DropDown.Value = 'Custom';
-        end
-
-        %Value Changing Function: Slider 5
-        function Custom5(app,event)
-            app.DropDown.Value = 'Custom';
         end
     end
 
-    %Component Initialization
+    % Component initialization
     methods (Access = private)
-        %Create UIFigure and Components
+
+        % Create UIFigure and components
         function createComponents(app)
-            %Create UIFigure and hide until all components are created
-            app.UIFigure = uifigure('Visible','off');
-            app.UIFigure.Color = [0.8 0.8 0.8];
-            app.UIFigure.Position = [150 80 990 600];
-            app.UIFigure.Name = ' UI Figure';
 
-            %Create Image
-            app.Image = uiimage(app.UIFigure);
-            app.Image.Position = [0 0 990 600];
-            app.Image.ImageSource = 'GUI.png';
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 1204 553];
+            app.UIFigure.Name = '5 Band Audio Equaliser';
 
-            % Create Slider 1
+            % Create UIAxes
+            app.UIAxes1 = uiaxes(app.UIFigure);
+            title(app.UIAxes1, 'Input Signal')
+            xlabel(app.UIAxes1, 'X')
+            ylabel(app.UIAxes1, 'Y')
+            zlabel(app.UIAxes1, 'Z')
+            app.UIAxes1.AmbientLightColor = [0 0 0];
+            app.UIAxes1.Box = 'on';
+            app.UIAxes1.XGrid = 'on';
+            app.UIAxes1.XMinorGrid = 'on';
+            app.UIAxes1.YGrid = 'on';
+            app.UIAxes1.YMinorGrid = 'on';
+            app.UIAxes1.Position = [26 299 300 197];
+
+            % Create UIAxes2
+            app.UIAxes2 = uiaxes(app.UIFigure);
+            title(app.UIAxes2, 'Output Signal')
+            xlabel(app.UIAxes2, 'X')
+            ylabel(app.UIAxes2, 'Y')
+            zlabel(app.UIAxes2, 'Z')
+            app.UIAxes2.Box = 'on';
+            app.UIAxes2.XGrid = 'on';
+            app.UIAxes2.XMinorGrid = 'on';
+            app.UIAxes2.YGrid = 'on';
+            app.UIAxes2.YMinorGrid = 'on';
+            app.UIAxes2.Position = [349 299 292 197];
+
+            % Create UIAxes3
+            app.UIAxes3 = uiaxes(app.UIFigure);
+            title(app.UIAxes3, 'Input Spectrum')
+            xlabel(app.UIAxes3, 'X')
+            ylabel(app.UIAxes3, 'Y')
+            zlabel(app.UIAxes3, 'Z')
+            app.UIAxes3.PlotBoxAspectRatio = [2.69491525423729 1 1];
+            app.UIAxes3.Box = 'on';
+            app.UIAxes3.XGrid = 'on';
+            app.UIAxes3.XMinorGrid = 'on';
+            app.UIAxes3.YGrid = 'on';
+            app.UIAxes3.YMinorGrid = 'on';
+            app.UIAxes3.Position = [20 6 313 265];
+
+            % Create UIAxes4
+            app.UIAxes4 = uiaxes(app.UIFigure);
+            title(app.UIAxes4, 'Output Spectrum')
+            xlabel(app.UIAxes4, 'X')
+            ylabel(app.UIAxes4, 'Y')
+            zlabel(app.UIAxes4, 'Z')
+            app.UIAxes4.PlotBoxAspectRatio = [2.69491525423729 1 1];
+            app.UIAxes4.Box = 'on';
+            app.UIAxes4.XGrid = 'on';
+            app.UIAxes4.XMinorGrid = 'on';
+            app.UIAxes4.YGrid = 'on';
+            app.UIAxes4.YMinorGrid = 'on';
+            app.UIAxes4.Position = [359 1 292 276];
+
+            % Create UIAxes5
+            app.UIAxes5 = uiaxes(app.UIFigure);
+            title(app.UIAxes5, 'Characteristic Frequency')
+            xlabel(app.UIAxes5, 'X')
+            ylabel(app.UIAxes5, 'Y')
+            zlabel(app.UIAxes5, 'Z')
+            app.UIAxes5.Box = 'on';
+            app.UIAxes5.XGrid = 'on';
+            app.UIAxes5.XMinorGrid = 'on';
+            app.UIAxes5.YGrid = 'on';
+            app.UIAxes5.YMinorGrid = 'on';
+            app.UIAxes5.Position = [666 64 365 189];
+
+            % Create Slider_1
             app.Slider_1 = uislider(app.UIFigure);
-            app.Slider_1.Limits = [-13 13];
-            app.Slider_1.MajorTicks = [];
-            app.Slider_1.MajorTickLabels = {''};
+            app.Slider_1.Limits = [-12 12];
+            app.Slider_1.MajorTicks = [-12 -9 -6 -3 0 3 6 9 12];
+            app.Slider_1.MajorTickLabels = {'-12', '-9', '-6', '-3', '0', '3', '6', '9', '12'};
             app.Slider_1.Orientation = 'vertical';
-            app.Slider_1.ValueChangingFcn = createCallbackFcn(app, @Custom, true);
-            app.Slider_1.MinorTicks = [];
-            app.Slider_1.Position = [436 69 3 113];
+            app.Slider_1.ValueChangedFcn = createCallbackFcn(app, @Slider_1ValueChanged, true);
+            app.Slider_1.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
+            app.Slider_1.Position = [776 358 3 150];
+            app.Slider_1.Value = 0;  % Set the default value to 0
 
-            % Create Slider 2
+            % Create Band1fc63HzLabel
+            app.Band1fc63HzLabel = uilabel(app.UIFigure);
+            app.Band1fc63HzLabel.HorizontalAlignment = 'center';
+            app.Band1fc63HzLabel.Position = [762 279 59 30];
+            app.Band1fc63HzLabel.Text = {'Band 1 '; 'fc = 63 Hz'};
+
+            % Create EditField
+            app.EditField_1 = uieditfield(app.UIFigure, 'text');
+            app.EditField_1.Position = [762 321 55 22];
+            app.EditField_1.ValueChangedFcn = createCallbackFcn(app, @EditField_1ValueChanged, true);
+            app.EditField_1.Value = '0';  % Set the default value to '0'
+
+            % Create Band2fc250HzLabel
+            app.Band2fc250HzLabel = uilabel(app.UIFigure);
+            app.Band2fc250HzLabel.HorizontalAlignment = 'center';
+            app.Band2fc250HzLabel.Position = [842 280 66 30];
+            app.Band2fc250HzLabel.Text = {'Band 2 '; 'fc = 250 Hz'};
+
+            % Create Slider_2
             app.Slider_2 = uislider(app.UIFigure);
-            app.Slider_2.Limits = [-13 13];
-            app.Slider_2.MajorTicks = [];
-            app.Slider_2.MajorTickLabels = {''};
+            app.Slider_2.Limits = [-12 12];
+            app.Slider_2.MajorTicks = [-12 -9 -6 -3 0 3 6 9 12];
+            app.Slider_2.MajorTickLabels = {'-12', '-9', '-6', '-3', '0', '3', '6', '9', '12'};
             app.Slider_2.Orientation = 'vertical';
-            app.Slider_2.ValueChangingFcn = createCallbackFcn(app, @Custom2, true);
-            app.Slider_2.MinorTicks = [];
-            app.Slider_2.Position = [464 69 3 113];
+            app.Slider_2.ValueChangedFcn = createCallbackFcn(app, @Slider_2ValueChanged, true);
+            app.Slider_2.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
+            app.Slider_2.Position = [857 358 3 150];
+            app.Slider_2.Value = 0;  % Set the default value to 0
 
-            % Create Slider 3
+            % Create EditField_2
+            app.EditField_2 = uieditfield(app.UIFigure, 'text');
+            app.EditField_2.Position = [848 321 55 22];
+            app.EditField_2.ValueChangedFcn = createCallbackFcn(app, @EditField_2ValueChanged, true);
+            app.EditField_2.Value = '0';  % Set the default value to '0'
+
+            % Create Band3fc1000HzLabel
+            app.Band3fc1000HzLabel = uilabel(app.UIFigure);
+            app.Band3fc1000HzLabel.HorizontalAlignment = 'center';
+            app.Band3fc1000HzLabel.Position = [925 280 73 30];
+            app.Band3fc1000HzLabel.Text = {'Band 3 '; 'fc = 1000 Hz'};
+
+            % Create Slider_3
             app.Slider_3 = uislider(app.UIFigure);
-            app.Slider_3.Limits = [-13 13];
-            app.Slider_3.MajorTicks = [];
-            app.Slider_3.MajorTickLabels = {''};
+            app.Slider_3.Limits = [-12 12];
+            app.Slider_3.MajorTicks = [-12 -9 -6 -3 0 3 6 9 12];
+            app.Slider_3.MajorTickLabels = {'-12', '-9', '-6', '-3', '0', '3', '6', '9', '12'};
             app.Slider_3.Orientation = 'vertical';
-            app.Slider_3.ValueChangingFcn = createCallbackFcn(app, @Custom3, true);
-            app.Slider_3.MinorTicks = [];
-            app.Slider_3.Position = [493 69 3 113];
+            app.Slider_3.ValueChangedFcn = createCallbackFcn(app, @Slider_3ValueChanged, true);
+            app.Slider_3.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
+            app.Slider_3.Position = [941 358 3 150];
+            app.Slider_3.Value = 0;  % Set the default value to 0
 
-            % Create Slider 4
+            % Create EditField_3
+            app.EditField_3 = uieditfield(app.UIFigure, 'text');
+            app.EditField_3.Position = [932 322 55 22];
+            app.EditField_3.ValueChangedFcn = createCallbackFcn(app, @EditField_3ValueChanged, true);
+            app.EditField_3.Value = '0';  % Set the default value to '0'
+
+            % Create Band4fc4000HzLabel
+            app.Band4fc4000HzLabel = uilabel(app.UIFigure);
+            app.Band4fc4000HzLabel.HorizontalAlignment = 'center';
+            app.Band4fc4000HzLabel.Position = [1017 278 69 30];
+            app.Band4fc4000HzLabel.Text = {'Band 4 '; 'fc = 4000Hz'};
+
+            % Create Slider_4
             app.Slider_4 = uislider(app.UIFigure);
-            app.Slider_4.Limits = [-13 13];
-            app.Slider_4.MajorTicks = [];
-            app.Slider_4.MajorTickLabels = {''};
+            app.Slider_4.Limits = [-12 12];
+            app.Slider_4.MajorTicks = [-12 -9 -6 -3 0 3 6 9 12];
+            app.Slider_4.MajorTickLabels = {'-12', '-9', '-6', '-3', '0', '3', '6', '9', '12'};
             app.Slider_4.Orientation = 'vertical';
-            app.Slider_4.ValueChangingFcn = createCallbackFcn(app, @Custom4, true);
-            app.Slider_4.MinorTicks = [];
-            app.Slider_4.Position = [522 69 3 113];
+            app.Slider_4.ValueChangedFcn = createCallbackFcn(app, @Slider_4ValueChanged, true);
+            app.Slider_4.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
+            app.Slider_4.Position = [1031 359 3 150];
+            app.Slider_4.Value = 0;  % Set the default value to 0
 
-            % Create Slider 5
+            % Create EditField_4
+            app.EditField_4 = uieditfield(app.UIFigure, 'text');
+            app.EditField_4.Position = [1022 324 55 22];
+            app.EditField_4.ValueChangedFcn = createCallbackFcn(app, @EditField_4ValueChanged, true);
+            app.EditField_4.Value = '0';  % Set the default value to '0'
+
+            % Create Band5fc16000HzLabel
+            app.Band5fc16000HzLabel = uilabel(app.UIFigure);
+            app.Band5fc16000HzLabel.HorizontalAlignment = 'center';
+            app.Band5fc16000HzLabel.Position = [1102 280 79 30];
+            app.Band5fc16000HzLabel.Text = {'Band 5 '; 'fc = 16000 Hz'};
+
+            % Create Slider_5
             app.Slider_5 = uislider(app.UIFigure);
-            app.Slider_5.Limits = [-13 13];
-            app.Slider_5.MajorTicks = [];
-            app.Slider_5.MajorTickLabels = {''};
+            app.Slider_5.Limits = [-12 12];
+            app.Slider_5.MajorTicks = [-12 -9 -6 -3 0 3 6 9 12];
+            app.Slider_5.MajorTickLabels = {'-12', '-9', '-6', '-3', '0', '3', '6', '9', '12'};
             app.Slider_5.Orientation = 'vertical';
-            app.Slider_5.ValueChangingFcn = createCallbackFcn(app, @Custom5, true);
-            app.Slider_5.MinorTicks = [];
-            app.Slider_5.Position = [551 69 3 113];
+            app.Slider_5.ValueChangedFcn = createCallbackFcn(app, @Slider_5ValueChanged, true);
+            app.Slider_5.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
+            app.Slider_5.Position = [1127 358 3 150];
+            app.Slider_5.Value = 0;  % Set the default value to 0
 
-            %Create UIAxes
-            app.UIAxes = uiaxes(app.UIFigure);
-            title(app.UIAxes, '')
-            xlabel(app.UIAxes, '')
-            ylabel(app.UIAxes, '')
-            app.UIAxes.PlotBoxAspectRatio = [4.10230179028133 1 1];
-            app.UIAxes.XLim = [50 14000];
-            app.UIAxes.YLim = [0 0.1];
-            app.UIAxes.ClippingStyle = 'rectangle';
-            app.UIAxes.ColorOrder = [0.9216 0.3373 0;0.851 0.3255 0.098;0.9294 0.6941 0.1255;0.4941 0.1843 0.5569;0.4667 0.6745 0.1882;0.302 0.7451 0.9333;0.6353 0.0784 0.1843];
-            app.UIAxes.GridColor = [1 1 1];
-            app.UIAxes.MinorGridColor = [1 1 1];
-            app.UIAxes.XTickLabel = '';
-            app.UIAxes.XMinorTick = 'on';
-            app.UIAxes.YTick = [];
-            app.UIAxes.Color = [0 0 0];
-            app.UIAxes.XMinorGrid = 'on';
-            app.UIAxes.XScale = 'log';
-            app.UIAxes.BackgroundColor = [0 0 0];
-            app.UIAxes.Position = [78 325 771 260];
+            % Create EditField_5
+            app.EditField_5 = uieditfield(app.UIFigure, 'text');
+            app.EditField_5.Position = [1114 322 55 22];
+            app.EditField_5.ValueChangedFcn = createCallbackFcn(app, @EditField_5ValueChanged, true);
+            app.EditField_5.Value = '0';  % Set the default value to '0'
 
-            % Create TrackDropDown
+            % Create LOADButton
+            app.LOADButton = uibutton(app.UIFigure, 'push');
+            app.LOADButton.ButtonPushedFcn = createCallbackFcn(app, @LOADButtonPushed, true);
+            app.LOADButton.BackgroundColor = [0 0.4471 0.7412];
+            app.LOADButton.FontColor = [1 1 1];
+            app.LOADButton.Position = [667 10 107 41];
+            app.LOADButton.Text = 'LOAD';
+
+            % Create PLAYButton
+            app.PLAYButton = uibutton(app.UIFigure, 'push');
+            app.PLAYButton.ButtonPushedFcn = createCallbackFcn(app, @PLAYButtonPushed, true);
+            app.PLAYButton.BackgroundColor = [0 0.4471 0.7412];
+            app.PLAYButton.FontColor = [1 1 1];
+            app.PLAYButton.Position = [787 10 92 41];
+            app.PLAYButton.Text = 'PLAY';
+
+            % Create RESETButton
+            app.RESETButton = uibutton(app.UIFigure, 'push');
+            app.RESETButton.ButtonPushedFcn = createCallbackFcn(app, @RESETButtonPushed, true);
+            app.RESETButton.BackgroundColor = [0 0.4471 0.7412];
+            app.RESETButton.FontColor = [1 1 1];
+            app.RESETButton.Position = [888 10 107 41];
+            app.RESETButton.Text = 'RESET';
+
+            % Create PLOTButton
+            app.PLOTButton = uibutton(app.UIFigure, 'push');
+            app.PLOTButton.ButtonPushedFcn = createCallbackFcn(app, @PLOTButtonPushed, true);
+            app.PLOTButton.BackgroundColor = [0 0.4471 0.7412];
+            app.PLOTButton.FontColor = [1 1 1];
+            app.PLOTButton.Position = [1002 10 107 41];
+            app.PLOTButton.Text = 'PLOT';
+
+            % Create SongSelectDropDownLabel
+            app.SongSelectDropDownLabel = uilabel(app.UIFigure);
+            app.SongSelectDropDownLabel.HorizontalAlignment = 'right';
+            app.SongSelectDropDownLabel.Position = [1025 208 70 22];
+            app.SongSelectDropDownLabel.Text = 'Song Select';
+
+            % Create SongSelectDropDown
             app.TrackDropDown = uidropdown(app.UIFigure);
-            app.TrackDropDown.Items = {};
-            app.TrackDropDown.FontName = 'Batang';
-            app.TrackDropDown.BackgroundColor = [0.651 0.651 0.651];
-
-            app.TrackDropDown.Position = [88 253 124 30];
-            app.TrackDropDown.Value = {};
-
-            % Create PlayButton
-            app.PlayButton = uibutton(app.UIFigure, 'push');
-            app.PlayButton.ButtonPushedFcn = createCallbackFcn(app, @play, true);
-            app.PlayButton.BackgroundColor = [0.651 0.651 0.651];
-            app.PlayButton.FontName = 'Batang';
-            app.PlayButton.Position = [235 253 69 30];
-            app.PlayButton.Text = 'Play';
-
-            % Create StopButton
-            app.StopButton = uibutton(app.UIFigure, 'push');
-            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, @Stop, true);
-            app.StopButton.BackgroundColor = [0.651 0.651 0.651];
-            app.StopButton.FontName = 'Batang';
-            app.StopButton.Position = [326 253 68 30];
-            app.StopButton.Text = 'Stop';
-
-            % Create DropDown
-            app.DropDown = uidropdown(app.UIFigure);
-            app.DropDown.Items = {'Flat', 'Rock', 'Pop', 'Bass', 'Treble', 'Vocal', 'Classical', 'Hip-Hop', 'Dance', 'Jazz', 'Powerfull', 'Shitty music', 'MUU', 'Custom'};
-            app.DropDown.ValueChangedFcn = createCallbackFcn(app, @Preset, true);
-            app.DropDown.FontName = 'Batang';
-            app.DropDown.BackgroundColor = [0.651 0.651 0.651];
-            app.DropDown.Position = [520 254 125 30];
-            app.DropDown.Value = 'Flat';
-
-            % Create RecButton
-            app.RecButton = uibutton(app.UIFigure, 'push');
-            app.RecButton.ButtonPushedFcn = createCallbackFcn(app, @Rec, true);
-            app.RecButton.BackgroundColor = [0.651 0.651 0.651];
-            app.RecButton.FontName = 'Batang';
-            app.RecButton.Position = [769 253 65 30];
-            app.RecButton.Text = 'Rec';
-
-            % Create Lamp
-            app.Lamp = uilamp(app.UIFigure);
-            app.Lamp.Position = [842 253 29 29];
-            app.Lamp.Color = [1 0 0];
-
-            % Create Switch
-            app.Switch = uiswitch(app.UIFigure, 'rocker');
-            app.Switch.Orientation = 'horizontal';
-
-            app.Switch.Visible = 'off';
-            app.Switch.Tooltip = {'FFT off/on'};
-            app.Switch.Position = [910 385 54 24];
-            app.Switch.Value = 'On';
-
-            % Create Knob
-            app.Knob = uiknob(app.UIFigure, 'continuous');
-            app.Knob.Limits = [1 50];
-            app.Knob.MajorTicks = [1 50];
-            app.Knob.MajorTickLabels = {''};
-            app.Knob.MinorTicks = [10 20 30 40];
-            app.Knob.Tooltip = {'FFT update frequency'};
-            app.Knob.Position = [901 440 72 72];
-            app.Knob.Value = 25;
-
-            % Create Image2
-            app.Image2 = uiimage(app.UIFigure);
-            app.Image2.Position = [59 299 831 310];
-            app.Image2.ImageSource = 'GUI frame.png';
+            app.TrackDropDown.Position = [1110 206 94 26];
 
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
         end
     end
 
-    %App Creation and Deletion
+    % App creation and deletion
     methods (Access = public)
-        %Construct app
+
+        % Construct app
         function app = app1gui
-            
-            %Create UIFigure and components
+            % Close all existing instances of the app
+            existingApps = findall(0, 'Type', 'figure', 'Name', '5 Band Audio Equaliser');
+            delete(existingApps);
+
+            % Create UIFigure and components
             createComponents(app)
 
-            %Register the app with App Designer
+            % Register the app with App Designer
             registerApp(app, app.UIFigure)
-
-            %Execute the startup function
-            runStartupFcn(app, @Start)
 
             if nargout == 0
                 clear app
             end
         end
 
-        %Code that executes before the app deletion
+        % Code that executes before app deletion
         function delete(app)
-            
-            %Delete UIFigure when app is deleted
+
+            % Delete UIFigure when app is deleted
             delete(app.UIFigure)
         end
     end

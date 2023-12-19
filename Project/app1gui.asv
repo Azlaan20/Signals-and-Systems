@@ -1,8 +1,10 @@
-classdef Test < matlab.apps.AppBase
+classdef app1gui < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure             matlab.ui.Figure
+        TrackDropDown       matlab.ui.control.DropDown
+        SongSelectDropDownLabel  matlab.ui.control.Label
         PLOTButton           matlab.ui.control.Button
         RESETButton          matlab.ui.control.Button
         PLAYButton           matlab.ui.control.Button
@@ -19,64 +21,166 @@ classdef Test < matlab.apps.AppBase
         EditField_2          matlab.ui.control.EditField
         Slider_2             matlab.ui.control.Slider
         Band2fc250HzLabel    matlab.ui.control.Label
-        EditField            matlab.ui.control.EditField
+        EditField_1            matlab.ui.control.EditField
         Band1fc63HzLabel     matlab.ui.control.Label
         Slider_1             matlab.ui.control.Slider
-        Meter                audio.ui.control.Meter
         UIAxes5              matlab.ui.control.UIAxes
         UIAxes4              matlab.ui.control.UIAxes
         UIAxes3              matlab.ui.control.UIAxes
         UIAxes2              matlab.ui.control.UIAxes
-        UIAxes               matlab.ui.control.UIAxes
+        UIAxes1               matlab.ui.control.UIAxes
 
         % Additional properties for storing data
         audioFilePath
         audioSignal
         sampleRate
-        player
-        timerObj
+    end
+
+    properties (Access = private)
+        fg = [63,250,1000,4000,16000];
+        fk = [63, 70.8, 250, 282, 1000, 1120, 4000, 4470, 16000, 17800];
+        fs = 44100;
+        wn = 2*pi*[63, 66.9, 70.8, 75, 250, 266, 282, 299, 1000, 1060, 1120, 1180, 4000, 4220, 4470, 4730, 16000, 16800, 17800, 18800];
+        isStop = 0;
+        isPlay = 0;
     end
 
     % Callbacks that handle component events
     methods (Access = private)
 
-        % Button pushed function: LOADButton
-        function LOADButtonPushed(app, event)
-            [file, path] = uigetfile('C:\Users\Azlaan\Music\*.*', 'Select an Audio File');
+        function a = den(app,k,Fs)
 
-            % Check if the user canceled the file selection
-            if isequal(file, 0) || isequal(path, 0)
-                disp('User canceled the file selection.');
-                return;
+            thetak = 2*pi*app.fk(k)/Fs;
+
+            if k>1 && k<10
+
+                dthetak = (2*pi*app.fk(k+1)/Fs-2*pi*app.fk(k-1)/Fs)/2;
+
+            elseif k == 1
+
+                dthetak = 2*pi*app.fk(2)/Fs-2*pi*app.fk(1)/Fs;
+            else
+
+                dthetak = 2*pi*app.fk(15)/Fs-2*pi*app.fk(14)/Fs;
             end
 
-            % Load the audio file
-            audioFilePath = fullfile(path, file);
-            [audioSignal, sampleRate] = audioread(audioFilePath);
+            pk = exp(-dthetak/2);
+            a = [1 -2*pk*cos(thetak) pk^2];
+        end
 
-            % Store information in UserData
-            app.audioFilePath = audioFilePath;
-            app.audioSignal = audioSignal;
-            app.sampleRate = sampleRate;
+        %Calculation of the modelling matrix
+        function Mrplus = Mrp(app,Fs)
+            M = zeros(20,21);
+            M(:,22) = ones(20,1);
+            sqW = Weight(app,app.Slider_1.Value,app.Slider_2.Value,app.Slider_3.Value,app.Slider_4.Value,app.Slider_5.Value);
+
+            for n = 1:35
+                for k = 1:15
+                    M(n,2*k-1) = 1/(den(app,k,Fs)*[1; exp(-app.wn(n)/Fs*1i); exp(-2*app.wn(n)/Fs*1i)]);
+                    M(n,2*k) = exp(-app.wn(n)/Fs*1i)/(den(app,k,Fs)*[1; exp(-app.wn(n)/Fs*1i);exp(-2*app.wn(n)/Fs*1i)]);
+                end
+                M(n,:) = M(n,:)*sqW(n);
+            end
+
+            Mr = [real(M);imag(M)];
+
+            Mrplus = (transpose(Mr)*Mr)\transpose(Mr);
+        end
+
+        %Calculation of the target response vector
+        function htr = target(app,G1,G2,G3,G4,G5)
+
+            y = 10.^(1/20*pchip([-flip(app.fg) app.fg],[flip([G1,G2,G3,G4,G5]) [G1,G2,G3,G4,G5]],linspace(-app.fs/2,app.fs/2,2^16)))';
+
+            phase = unwrap(imag(-hilbert(log(y))));
+            % Adjust the range based on the actual length of the 'phase' vector
+            phase_start = round(32769 * length(phase) / 2^16);
+            phase_end = round(64124 * length(phase) / 2^16);
+            phase = phase(phase_start:phase_end);
+            phase = phase(32769:64124);
+
+            i = 1;
+            fi = zeros(1,35);
+
+            for w = app.wn/(2*pi)
+                if round(w*length(phase)/21100) > length(phase)
+                    fi(i) = phase(length(phase));
+                else
+                    fi(i) = phase(round(w*length(phase)/21100));
+                end
+                i=i+1;
+            end
+
+            htr = [real(exp(1i*fi'));imag(exp(1i*fi'))];
+
+        end
+
+        %Calculation of the optimal numerator coefficients
+        function popt = num(app,htr,Mrplus)
+            popt = Mrplus*htr;
+        end
+
+        %Filtering process algorithm
+        function yk = filterNew(app,bWithIndex,xk1,ybuffer,xbuffer,Fs,n)
+            yk = filter(bWithIndex',den(app,n,Fs),xk1,filtic(bWithIndex',den(app,n,Fs),ybuffer,xbuffer));
+        end
+
+        %Calculation of the Weighting factors
+        function sqW = Weight(app,G1,G2,G3,G4,G5)
+            ht = 10.^(1/20*pchip([10 app.fg],[G1,G2,G3,G4,G5],app.wn/(2*pi)))';
+            sqW1 = zeros(35,1);
+            for i = 1:35
+                sqW1(i) = 1/ht(i);
+            end
+            sqW = sqW1;
+        end
+
+        % Button pushed function: LOADButton
+        function LOADButtonPushed(app, event)
+            % Set the path to the desired directory
+            folderPath = 'C:\Users\Azlaan\Music\';
+
+            % List MP3 files
+            mp3Files = struct2cell(dir(fullfile(folderPath, '*.mp3')));
+            mp3Files = mp3Files(1, :);
+
+            % List WAV files
+            wavFiles = struct2cell(dir(fullfile(folderPath, '*.wav')));
+            wavFiles = wavFiles(1, :);
+
+            % Combine MP3 and WAV files into a single list
+            audioFiles = [mp3Files, wavFiles];
+
+            % Update app.TrackDropDown.Items
+            app.TrackDropDown.Items = audioFiles;
+
+            % Check if the list is empty and show a message if true
+            if isempty(app.TrackDropDown.Items)
+                uialert(app.UIFigure, ...
+                    ['Your current folder does not contain any audio files'], ...
+                    'Info', 'Icon', 'info');
+            end
         end
 
         % Button pushed function: PLOTButton
         function PLOTButtonPushed(app, event)
+            app.audioSignal = app.TrackDropDown.Value;
+
             if isempty(app.audioSignal)
                 disp('Please load a song first.');
                 return;
             end
             % Design and apply filters here
             center_frequencies = [63, 250, 1000, 4000, 16000];
-            Q = 0.73;
+            Q = sqrt(2);
             desired_order = 3;
             Fs = 62000;
 
             % Preallocate arrays for filter coefficients
             B = cell(1, length(center_frequencies));
             A = cell(1, length(center_frequencies));
-            f1 = [33.21, 131.79, 527.15, 2108.6, 8434.3];
-            f2 = [119.51, 474.25, 1897.0, 7588.0, 30352.1];
+            f1 = [44.55, 176.78, 707.11, 2828.43, 11313.71];
+            f2 = [89.10, 353.55, 1414.21, 5656.85, 22627.42];
 
             % Design Butterworth filters
             for i = 1:length(center_frequencies)
@@ -102,20 +206,70 @@ classdef Test < matlab.apps.AppBase
 
             % Plot the original signal
             t_original = (0:length(app.audioSignal)-1) / app.sampleRate;
-            cla(app.UIAxes)
-            plot(app.UIAxes, t_original, app.audioSignal);
-            title(app.UIAxes, 'Original Signal');
-            xlabel(app.UIAxes, 'Time (s)');
-            ylabel(app.UIAxes, 'Amplitude');
+            clf(app.UIAxes1)
+            plot(app.UIAxes1, t_original, app.audioSignal);
+            title(app.UIAxes1, 'Original Signal');
+            xlabel(app.UIAxes1, 'Time (s)');
+            ylabel(app.UIAxes1, 'Amplitude');
+            axis(app.UIAxes1, 'tight');
 
             % Plot the combined adjusted signal on UIAxes2
             t_adjusted = (0:length(combined_output)-1) / app.sampleRate;
-            cla(app.UIAxes2)
+            clf(app.UIAxes2)
             plot(app.UIAxes2, t_adjusted, combined_output);
             title(app.UIAxes2, 'Combined Adjusted Signal');
             xlabel(app.UIAxes2, 'Time (s)');
             ylabel(app.UIAxes2, 'Amplitude');
+            axis(app.UIAxes2, 'tight');
 
+            % Plot the input spectrum on UIAxes3
+            Audio_len = length(app.audioSignal);
+            FFT_audio = fft(app.audioSignal);
+            P2_audio = abs(FFT_audio / Audio_len);
+            P1_audio = P2_audio(1:Audio_len/2+1);
+            P1_audio(2:end-1) = 2 * P1_audio(2:end-1);
+            freq_audio = app.sampleRate * (0:(Audio_len/2)) / Audio_len;
+            plot(app.UIAxes3, freq_audio, P1_audio);
+            title(app.UIAxes3, 'Input Spectrum');
+            xlabel(app.UIAxes3, 'Frequency (Hz)');
+            ylabel(app.UIAxes3, 'Amplitude');
+            axis(app.UIAxes3, 'tight');
+
+            % Plot the output spectrum on UIAxes4
+            Audio_len_combined = length(combined_output);
+            FFT_combined = fft(combined_output);
+            P2_combined = abs(FFT_combined / Audio_len_combined);
+            P1_combined = P2_combined(1:Audio_len_combined/2+1);
+            P1_combined(2:end-1) = 2 * P1_combined(2:end-1);
+            freq_combined = app.sampleRate * (0:(Audio_len_combined/2)) / Audio_len_combined;
+            plot(app.UIAxes4, freq_combined, P1_combined);
+            title(app.UIAxes4, 'Output Spectrum');
+            xlabel(app.UIAxes4, 'Frequency (Hz)');
+            ylabel(app.UIAxes4, 'Amplitude');
+            axis(app.UIAxes4, 'tight');
+
+            % Plot the characteristic filter response on UIAxes5
+            combined_response = zeros(size(app.audioSignal));
+
+            for i = 1:length(center_frequencies)
+                % Calculate the frequency response of the filter
+                [H, F] = freqz(B{i}, A{i}, length(app.audioSignal), app.sampleRate);
+
+                % Multiply by gain from the corresponding slider
+                gain = app.(['Slider_', num2str(i)]).Value; % Access slider value dynamically
+                H = H * 10^(gain/20); % Convert dB to linear scale
+
+                % Sum the adjusted responses
+                combined_response = combined_response + abs(H);
+            end
+
+            % Plot the characteristic filter response on UIAxes5
+            clf(app.UIAxes5);
+            plot(app.UIAxes5, F, combined_response, 'b');
+            title(app.UIAxes5, 'Characteristic Filter Response');
+            xlabel(app.UIAxes5, 'Frequency (Hz)');
+            ylabel(app.UIAxes5, 'Magnitude');
+            axis(app.UIAxes5, 'tight');
         end
 
         % Value changed function: Slider_1
@@ -124,7 +278,7 @@ classdef Test < matlab.apps.AppBase
             sliderValue = app.Slider_1.Value;
 
             % Display the value in the edit field
-            app.EditField.Value = num2str(sliderValue);
+            app.EditField_1.Value = num2str(sliderValue);
         end
 
         % Value changed function: Slider_2
@@ -166,7 +320,7 @@ classdef Test < matlab.apps.AppBase
         % Value changed function: EditField_1
         % Value changed function: EditField_1
         function EditField_1ValueChanged(app, event)
-            editfieldvalue = str2double(app.EditField.Value);
+            editfieldvalue = str2double(app.EditField_1.Value);
 
             % Check if the value is within the slider limits
             editfieldvalue = max(min(editfieldvalue, app.Slider_1.Limits(2)), app.Slider_1.Limits(1));
@@ -205,87 +359,181 @@ classdef Test < matlab.apps.AppBase
 
         % Button pushed function: PLAYButton
         function PLAYButtonPushed(app, ~)
+            app.audioSignal = app.TrackDropDown.Value;
+
             % Check if a song is loaded
             if isempty(app.audioSignal)
                 disp('Please load a song first.');
                 return;
-            end
 
-            % Design and apply filters here
-            center_frequencies = [63, 250, 1000, 4000, 16000];
-            desired_order = 3;
-            Fs = 62000;
+            elseif strcmp(app.PLAYButton.Text,'PLAY') && app.isPlay == 0
 
-            % Preallocate arrays for filter coefficients
-            B = cell(1, length(center_frequencies));
-            A = cell(1, length(center_frequencies));
-            f1 = [33.21, 131.79, 527.15, 2108.6, 8434.3];
-            f2 = [119.51, 474.25, 1897.0, 7588.0, 30352.1];
+            % Specify the folder path where audio files are stored
+            folderPath = 'C:\Users\Azlaan\Music\';
 
-            % Design Butterworth filters
-            for i = 1:length(center_frequencies)
-                fc = center_frequencies(i);
-                [B{i}, A{i}] = butter(desired_order, [f1(i), f2(i)]/(Fs/2), 'bandpass');
-            end
+            % Construct the full path to the selected audio file
+            selectedFile = fullfile(folderPath, char(app.TrackDropDown.Value));
 
-            % Create an audioplayer object if not already created
-            if ~isfield(app, 'player') || isempty(app.player) || ~isvalid(app.player)
-                app.player = audioplayer(zeros(size(app.audioSignal)), app.sampleRate);
-                app.player = audioplayer(app.audioSignal, app.sampleRate);
-            else
-                % Stop the player if it's already playing
-                stop(app.player);
-            end
+            % Acquiring the audio file
+            fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
+            deviceWriter = audioDeviceWriter('SampleRate', fileReader.SampleRate);
 
-            % Set up the timer to continuously update the audio stream
-            timerObj = timer('ExecutionMode', 'fixedRate', 'Period', 0.1, 'TimerFcn', @(~,~) updateAudioStream(app));
+            app.PLAYButton.Text = 'PAUSE';
+            app.isPlay = 1;
+            app.sampleRate = fileReader.SampleRate;
+            Fs = app.fs;
 
-            % Store the timer object in the app for future reference or cleanup
-            app.timerObj = timerObj;
+            %Initializing the delays
+            xbuffer1 = 0;
+            xbuffer2 = 0;
+            ybuffer1 = zeros(15,3);
+            ybuffer2 = zeros(15,3);
 
-            % Set the StartFcn property to start the timer when audio playback begins
-            app.player.StartFcn = @(~,~) start(timerObj);
+            S1 = app.Slider_1.Value;
+            S2 = app.Slider_2.Value;
+            S3 = app.Slider_3.Value;
+            S4 = app.Slider_4.Value;
+            S5 = app.Slider_5.Value;
 
-            % Start playing the audio
-            play(app.player);
+            Mrplus = Mrp(app,Fs);
 
-            % Display timer information for debugging
-            disp(timerObj);
+            b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
 
-            % Function to update the audio stream
-            function updateAudioStream(~, ~)
-                try
-                    % Initialize the combined output
-                    combined_output = zeros(size(app.audioSignal));
+            dF = Fs/1024;
+            f = -Fs/2:dF:Fs/2-dF;
 
-                    % Update gain values based on the current positions of the sliders
-                    gains = zeros(1, length(center_frequencies));
-                    for i = 1:length(center_frequencies)
-                        gains(i) = app.(['Slider_', num2str(i)]).Value;
-                    end
+            i = 0;
 
-                    % Apply filters and adjust gains
-                    for i = 1:length(center_frequencies)
-                        % Apply filter
-                        filtered_signal = filter(B{i}, A{i}, app.audioSignal);
+            %Playback loop
+            while ~isDone(fileReader)
+                %Acquiring the succeeding frame
+                xk = fileReader();
 
-                        % Multiply by gain from the corresponding slider
-                        filtered_signal = filtered_signal * 10^(gains(i)/20); % Convert dB to linear scale
-
-                        % Sum the adjusted signals
-                        combined_output = combined_output + filter-+ed_signal;
-                    end
-
-                    % Store the modified audio data in the UserData property
-                    set(app.player, 'UserData', combined_output);
-                catch exception
-                    disp(['Error in updateAudioStream: ' exception.message]);
-                    stop(timerObj);
+                if length(xk(1,:))~=2
+                    xk = [xk,xk];
+                    xk1 = xk(:,1)';
+                    xk2 = xk(:,2)';
+                else
+                    xk1 = xk(:,1)';
+                    xk2 = xk(:,2)';
                 end
+
+                if strcmp(app.PLAYButton.Text,'PLAY') == 1
+                    %Pause loop
+                    while strcmp(app.PLAYButton.Text,'PLAY') == 1 && ...
+                            app.isStop == 0
+                        pause(1);
+                    end
+                end
+
+                pause(0);
+
+                %Checking if slider configuration changed
+                if app.Slider_1.Value ~= S1 || app.Slider_2.Value ~= S2 || app.Slider_3.Value ~= S3 || S4 ~= app.Slider_4.Value ||  S5 ~= app.Slider_5.Value 
+
+                    S1 = app.Slider_1.Value;
+                    S2 = app.Slider_2.Value;
+                    S3 = app.Slider_3.Value;
+                    S4 = app.Slider_4.Value;
+                    S5 = app.Slider_5.Value;
+
+                    %Calculating the new filters
+                    Mrplus = Mrp(app,Fs);
+                    b = num(app,target(app,S1,S2,S3,S4,S5), Mrplus);
+                end
+
+                %Filtering process
+                for n=1:16
+                    if n<16
+                        ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
+                        ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
+                    else
+                        ykNew1(n,:) = xk1*b(37);
+                        ykNew2(n,:) = xk2*b(37);
+                    end
+
+                end
+
+                yk1=0;
+                yk2=0;
+
+                for n=1:16
+                    yk1=yk1 + ykNew1(n,:);
+
+                    yk2=yk2 + ykNew2(n,:);
+                end
+
+                %Playback of frame
+                deviceWriter([0.25*yk1',0.25*yk2']);
+
+                %Delay updates
+                xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
+                xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
+                for n=1:15
+                    ybuffer1(n,:)=flip(ykNew1(n,...
+                        (length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
+
+                    ybuffer2(n,:)=flip(ykNew2(n,...
+                        (length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
+                end
+
+
+                if app.isStop == 1
+                    release(fileReader);
+                    release(deviceWriter);
+                    app.PLAYButton.Text = 'PLAY';
+                    app.isPlay = 0;
+                    app.isStop = 0;
+                end
+
+                i = i+1;
+            end
+
+
+            release(fileReader);
+            release(deviceWriter);
+
+            app.PLAYButton.Text = 'PLAY';
+            app.isPlay = 0;
+
+            elseif strcmp(app.PLAYButton.Text,'PLAY') && ...
+                    app.isPlay == 1
+                app.PLAYButton.Text = 'PAUSE';
+            elseif app.isStop == 1
+                release(fileReader);
+                release(deviceWriter);
+                app.PLAYButton.Text = 'PLAY';
+                app.isPlay = 0;
+                app.isStop = 0;
+            else
+                app.PLAYButton.Text = 'PLAY';
             end
         end
 
+        % Button pushed function: RESETButton
+        function RESETButtonPushed(app, event)
+            % Stop playback if a song is playing
+            if ~isempty(app.player) && isplaying(app.player)
+                stop(app.player);
+            end
 
+            % Clear stored data
+            app.audioFilePath = '';
+            app.audioSignal = [];
+            app.sampleRate = [];
+            app.player = [];
+            app.timerObj = [];
+
+            % Reset sliders and edit fields
+            for i = 1:5
+                app.(sprintf('Slider_%d', i)).Value = 0;
+                app.(sprintf('EditField_%d', i)).Value = num2str(0);
+
+                % Clear both plot and axes
+                plot(app.(sprintf('UIAxes%d', i)), NaN, NaN);
+                cla(app.(sprintf('UIAxes%d', i)));
+            end
+        end
     end
 
     % Component initialization
@@ -296,22 +544,22 @@ classdef Test < matlab.apps.AppBase
 
             % Create UIFigure and hide until all components are created
             app.UIFigure = uifigure('Visible', 'off');
-            app.UIFigure.Position = [100 100 1137 553];
-            app.UIFigure.Name = 'MATLAB App';
+            app.UIFigure.Position = [100 100 1204 553];
+            app.UIFigure.Name = '5 Band Audio Equaliser';
 
             % Create UIAxes
-            app.UIAxes = uiaxes(app.UIFigure);
-            title(app.UIAxes, 'Input Signal')
-            xlabel(app.UIAxes, 'X')
-            ylabel(app.UIAxes, 'Y')
-            zlabel(app.UIAxes, 'Z')
-            app.UIAxes.AmbientLightColor = [0 0 0];
-            app.UIAxes.Box = 'on';
-            app.UIAxes.XGrid = 'on';
-            app.UIAxes.XMinorGrid = 'on';
-            app.UIAxes.YGrid = 'on';
-            app.UIAxes.YMinorGrid = 'on';
-            app.UIAxes.Position = [26 299 300 197];
+            app.UIAxes1 = uiaxes(app.UIFigure);
+            title(app.UIAxes1, 'Input Signal')
+            xlabel(app.UIAxes1, 'X')
+            ylabel(app.UIAxes1, 'Y')
+            zlabel(app.UIAxes1, 'Z')
+            app.UIAxes1.AmbientLightColor = [0 0 0];
+            app.UIAxes1.Box = 'on';
+            app.UIAxes1.XGrid = 'on';
+            app.UIAxes1.XMinorGrid = 'on';
+            app.UIAxes1.YGrid = 'on';
+            app.UIAxes1.YMinorGrid = 'on';
+            app.UIAxes1.Position = [26 299 300 197];
 
             % Create UIAxes2
             app.UIAxes2 = uiaxes(app.UIFigure);
@@ -365,11 +613,7 @@ classdef Test < matlab.apps.AppBase
             app.UIAxes5.XMinorGrid = 'on';
             app.UIAxes5.YGrid = 'on';
             app.UIAxes5.YMinorGrid = 'on';
-            app.UIAxes5.Position = [682 64 365 189];
-
-            % Create Meter
-            app.Meter = uiaudiometer(app.UIFigure);
-            app.Meter.Position = [1056 64 69 190];
+            app.UIAxes5.Position = [666 64 365 189];
 
             % Create Slider_1
             app.Slider_1 = uislider(app.UIFigure);
@@ -379,25 +623,25 @@ classdef Test < matlab.apps.AppBase
             app.Slider_1.Orientation = 'vertical';
             app.Slider_1.ValueChangedFcn = createCallbackFcn(app, @Slider_1ValueChanged, true);
             app.Slider_1.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
-            app.Slider_1.Position = [696 358 3 150];
+            app.Slider_1.Position = [776 358 3 150];
             app.Slider_1.Value = 0;  % Set the default value to 0
 
             % Create Band1fc63HzLabel
             app.Band1fc63HzLabel = uilabel(app.UIFigure);
             app.Band1fc63HzLabel.HorizontalAlignment = 'center';
-            app.Band1fc63HzLabel.Position = [682 279 59 30];
+            app.Band1fc63HzLabel.Position = [762 279 59 30];
             app.Band1fc63HzLabel.Text = {'Band 1 '; 'fc = 63 Hz'};
 
             % Create EditField
-            app.EditField = uieditfield(app.UIFigure, 'text');
-            app.EditField.Position = [682 321 55 22];
-            app.EditField.ValueChangedFcn = createCallbackFcn(app, @EditField_1ValueChanged, true);
-            app.EditField.Value = '0';  % Set the default value to '0'
+            app.EditField_1 = uieditfield(app.UIFigure, 'text');
+            app.EditField_1.Position = [762 321 55 22];
+            app.EditField_1.ValueChangedFcn = createCallbackFcn(app, @EditField_1ValueChanged, true);
+            app.EditField_1.Value = '0';  % Set the default value to '0'
 
             % Create Band2fc250HzLabel
             app.Band2fc250HzLabel = uilabel(app.UIFigure);
             app.Band2fc250HzLabel.HorizontalAlignment = 'center';
-            app.Band2fc250HzLabel.Position = [760 275 66 30];
+            app.Band2fc250HzLabel.Position = [842 280 66 30];
             app.Band2fc250HzLabel.Text = {'Band 2 '; 'fc = 250 Hz'};
 
             % Create Slider_2
@@ -408,19 +652,19 @@ classdef Test < matlab.apps.AppBase
             app.Slider_2.Orientation = 'vertical';
             app.Slider_2.ValueChangedFcn = createCallbackFcn(app, @Slider_2ValueChanged, true);
             app.Slider_2.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
-            app.Slider_2.Position = [772 358 3 150];
+            app.Slider_2.Position = [857 358 3 150];
             app.Slider_2.Value = 0;  % Set the default value to 0
 
             % Create EditField_2
             app.EditField_2 = uieditfield(app.UIFigure, 'text');
-            app.EditField_2.Position = [763 321 55 22];
+            app.EditField_2.Position = [848 321 55 22];
             app.EditField_2.ValueChangedFcn = createCallbackFcn(app, @EditField_2ValueChanged, true);
             app.EditField_2.Value = '0';  % Set the default value to '0'
 
             % Create Band3fc1000HzLabel
             app.Band3fc1000HzLabel = uilabel(app.UIFigure);
             app.Band3fc1000HzLabel.HorizontalAlignment = 'center';
-            app.Band3fc1000HzLabel.Position = [837 279 73 30];
+            app.Band3fc1000HzLabel.Position = [925 280 73 30];
             app.Band3fc1000HzLabel.Text = {'Band 3 '; 'fc = 1000 Hz'};
 
             % Create Slider_3
@@ -431,19 +675,19 @@ classdef Test < matlab.apps.AppBase
             app.Slider_3.Orientation = 'vertical';
             app.Slider_3.ValueChangedFcn = createCallbackFcn(app, @Slider_3ValueChanged, true);
             app.Slider_3.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
-            app.Slider_3.Position = [853 357 3 150];
+            app.Slider_3.Position = [941 358 3 150];
             app.Slider_3.Value = 0;  % Set the default value to 0
 
             % Create EditField_3
             app.EditField_3 = uieditfield(app.UIFigure, 'text');
-            app.EditField_3.Position = [844 321 55 22];
+            app.EditField_3.Position = [932 322 55 22];
             app.EditField_3.ValueChangedFcn = createCallbackFcn(app, @EditField_3ValueChanged, true);
             app.EditField_3.Value = '0';  % Set the default value to '0'
 
             % Create Band4fc4000HzLabel
             app.Band4fc4000HzLabel = uilabel(app.UIFigure);
             app.Band4fc4000HzLabel.HorizontalAlignment = 'center';
-            app.Band4fc4000HzLabel.Position = [927 275 69 30];
+            app.Band4fc4000HzLabel.Position = [1017 278 69 30];
             app.Band4fc4000HzLabel.Text = {'Band 4 '; 'fc = 4000Hz'};
 
             % Create Slider_4
@@ -454,19 +698,19 @@ classdef Test < matlab.apps.AppBase
             app.Slider_4.Orientation = 'vertical';
             app.Slider_4.ValueChangedFcn = createCallbackFcn(app, @Slider_4ValueChanged, true);
             app.Slider_4.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
-            app.Slider_4.Position = [937 356 3 150];
+            app.Slider_4.Position = [1031 359 3 150];
             app.Slider_4.Value = 0;  % Set the default value to 0
 
             % Create EditField_4
             app.EditField_4 = uieditfield(app.UIFigure, 'text');
-            app.EditField_4.Position = [932 321 55 22];
+            app.EditField_4.Position = [1022 324 55 22];
             app.EditField_4.ValueChangedFcn = createCallbackFcn(app, @EditField_4ValueChanged, true);
             app.EditField_4.Value = '0';  % Set the default value to '0'
 
             % Create Band5fc16000HzLabel
             app.Band5fc16000HzLabel = uilabel(app.UIFigure);
             app.Band5fc16000HzLabel.HorizontalAlignment = 'center';
-            app.Band5fc16000HzLabel.Position = [1017 279 79 30];
+            app.Band5fc16000HzLabel.Position = [1102 280 79 30];
             app.Band5fc16000HzLabel.Text = {'Band 5 '; 'fc = 16000 Hz'};
 
             % Create Slider_5
@@ -477,12 +721,12 @@ classdef Test < matlab.apps.AppBase
             app.Slider_5.Orientation = 'vertical';
             app.Slider_5.ValueChangedFcn = createCallbackFcn(app, @Slider_5ValueChanged, true);
             app.Slider_5.MinorTicks = [-12 -11 -10 -9 -8 -7 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5 6 7 8 9 10 11 12];
-            app.Slider_5.Position = [1029 357 3 150];
+            app.Slider_5.Position = [1127 358 3 150];
             app.Slider_5.Value = 0;  % Set the default value to 0
 
             % Create EditField_5
             app.EditField_5 = uieditfield(app.UIFigure, 'text');
-            app.EditField_5.Position = [1029 321 55 22];
+            app.EditField_5.Position = [1114 322 55 22];
             app.EditField_5.ValueChangedFcn = createCallbackFcn(app, @EditField_5ValueChanged, true);
             app.EditField_5.Value = '0';  % Set the default value to '0'
 
@@ -504,6 +748,7 @@ classdef Test < matlab.apps.AppBase
 
             % Create RESETButton
             app.RESETButton = uibutton(app.UIFigure, 'push');
+            app.RESETButton.ButtonPushedFcn = createCallbackFcn(app, @RESETButtonPushed, true);
             app.RESETButton.BackgroundColor = [0 0.4471 0.7412];
             app.RESETButton.FontColor = [1 1 1];
             app.RESETButton.Position = [888 10 107 41];
@@ -517,6 +762,16 @@ classdef Test < matlab.apps.AppBase
             app.PLOTButton.Position = [1002 10 107 41];
             app.PLOTButton.Text = 'PLOT';
 
+            % Create SongSelectDropDownLabel
+            app.SongSelectDropDownLabel = uilabel(app.UIFigure);
+            app.SongSelectDropDownLabel.HorizontalAlignment = 'right';
+            app.SongSelectDropDownLabel.Position = [1025 208 70 22];
+            app.SongSelectDropDownLabel.Text = 'Song Select';
+
+            % Create SongSelectDropDown
+            app.TrackDropDown = uidropdown(app.UIFigure);
+            app.TrackDropDown.Position = [1110 206 94 26];
+
             % Show the figure after all components are created
             app.UIFigure.Visible = 'on';
         end
@@ -526,9 +781,9 @@ classdef Test < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = Test
+        function app = app1gui
             % Close all existing instances of the app
-            existingApps = findall(0, 'Type', 'figure', 'Name', 'MATLAB App');
+            existingApps = findall(0, 'Type', 'figure', 'Name', '5 Band Audio Equaliser');
             delete(existingApps);
 
             % Create UIFigure and components
