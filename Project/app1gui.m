@@ -3,7 +3,8 @@ classdef app1gui < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         UIFigure             matlab.ui.Figure
-        TrackDropDown       matlab.ui.control.DropDown
+        UIAxesBackground     matlab.ui.control.UIAxes
+        TrackDropDown        matlab.ui.control.DropDown
         SongSelectDropDownLabel  matlab.ui.control.Label
         PLOTButton           matlab.ui.control.Button
         RESETButton          matlab.ui.control.Button
@@ -21,19 +22,21 @@ classdef app1gui < matlab.apps.AppBase
         EditField_2          matlab.ui.control.EditField
         Slider_2             matlab.ui.control.Slider
         Band2fc250HzLabel    matlab.ui.control.Label
-        EditField_1            matlab.ui.control.EditField
+        EditField_1          matlab.ui.control.EditField
         Band1fc63HzLabel     matlab.ui.control.Label
         Slider_1             matlab.ui.control.Slider
         UIAxes5              matlab.ui.control.UIAxes
         UIAxes4              matlab.ui.control.UIAxes
         UIAxes3              matlab.ui.control.UIAxes
         UIAxes2              matlab.ui.control.UIAxes
-        UIAxes1               matlab.ui.control.UIAxes
+        UIAxes1              matlab.ui.control.UIAxes
 
         % Additional properties for storing data
         audioFilePath
         audioSignal
         sampleRate
+        fileReader
+        deviceWriter
     end
 
     properties (Access = private)
@@ -164,7 +167,25 @@ classdef app1gui < matlab.apps.AppBase
 
         % Button pushed function: PLOTButton
         function PLOTButtonPushed(app, event)
-            app.audioSignal = app.TrackDropDown.Value;
+            % Get the selected MP3 file name from the dropdown
+            selectedTrack = app.TrackDropDown.Value;
+
+            % Check if a song is selected
+            if isempty(selectedTrack)
+                disp('Please select a song from the dropdown.');
+                return;
+            end
+
+            % Construct the full path to the selected MP3 file
+            filePath = fullfile('C:\Users\Azlaan\Music\', selectedTrack);
+
+            % Read the audio signal from the selected MP3 file
+            try
+                [app.audioSignal, app.sampleRate] = audioread(filePath);
+            catch
+                disp('Error loading the selected song.');
+                return;
+            end
 
             if isempty(app.audioSignal)
                 disp('Please load a song first.');
@@ -368,140 +389,140 @@ classdef app1gui < matlab.apps.AppBase
 
             elseif strcmp(app.PLAYButton.Text,'PLAY') && app.isPlay == 0
 
-            % Specify the folder path where audio files are stored
-            folderPath = 'C:\Users\Azlaan\Music\';
+                % Specify the folder path where audio files are stored
+                folderPath = 'C:\Users\Azlaan\Music\';
 
-            % Construct the full path to the selected audio file
-            selectedFile = fullfile(folderPath, char(app.TrackDropDown.Value));
+                % Construct the full path to the selected audio file
+                selectedFile = fullfile(folderPath, char(app.TrackDropDown.Value));
 
-            % Acquiring the audio file
-            fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
-            deviceWriter = audioDeviceWriter('SampleRate', fileReader.SampleRate);
+                % Acquiring the audio file
+                app.fileReader = dsp.AudioFileReader(selectedFile, 'SamplesPerFrame', 1024);
+                app.deviceWriter = audioDeviceWriter('SampleRate', app.fileReader.SampleRate);
 
-            app.PLAYButton.Text = 'PAUSE';
-            app.isPlay = 1;
-            app.sampleRate = fileReader.SampleRate;
-            Fs = app.fs;
+                app.PLAYButton.Text = 'PAUSE';
+                app.isPlay = 1;
+                app.sampleRate = app.fileReader.SampleRate;
+                Fs = app.fs;
 
-            %Initializing the delays
-            xbuffer1 = 0;
-            xbuffer2 = 0;
-            ybuffer1 = zeros(10,3);
-            ybuffer2 = zeros(10,3);
+                %Initializing the delays
+                xbuffer1 = 0;
+                xbuffer2 = 0;
+                ybuffer1 = zeros(10,3);
+                ybuffer2 = zeros(10,3);
 
-            S1 = app.Slider_1.Value;
-            S2 = app.Slider_2.Value;
-            S3 = app.Slider_3.Value;
-            S4 = app.Slider_4.Value;
-            S5 = app.Slider_5.Value;
+                S1 = app.Slider_1.Value;
+                S2 = app.Slider_2.Value;
+                S3 = app.Slider_3.Value;
+                S4 = app.Slider_4.Value;
+                S5 = app.Slider_5.Value;
 
-            Mrplus = Mrp(app,Fs);
+                Mrplus = Mrp(app,Fs);
 
-            b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
+                b = num(app,target(app,S1,S2,S3,S4,S5),Mrplus);
 
-            dF = Fs/1024;
-            f = -Fs/2:dF:Fs/2-dF;
+                dF = Fs/1024;
+                f = -Fs/2:dF:Fs/2-dF;
 
-            i = 0;
+                i = 0;
 
-            %Playback loop
-            while ~isDone(fileReader)
-                %Acquiring the succeeding frame
-                xk = fileReader();
+                %Playback loop
+                while ~isDone(app.fileReader)
+                    %Acquiring the succeeding frame
+                    xk = app.fileReader();
 
-                if length(xk(1,:))~=2
-                    xk = [xk,xk];
-                    xk1 = xk(:,1)';
-                    xk2 = xk(:,2)';
-                else
-                    xk1 = xk(:,1)';
-                    xk2 = xk(:,2)';
-                end
-
-                if strcmp(app.PLAYButton.Text,'PLAY') == 1
-                    %Pause loop
-                    while strcmp(app.PLAYButton.Text,'PLAY') == 1 && ...
-                            app.isStop == 0
-                        pause(1);
-                    end
-                end
-
-                pause(0);
-
-                %Checking if slider configuration changed
-                if app.Slider_1.Value ~= S1 || app.Slider_2.Value ~= S2 || app.Slider_3.Value ~= S3 || S4 ~= app.Slider_4.Value ||  S5 ~= app.Slider_5.Value 
-
-                    S1 = app.Slider_1.Value;
-                    S2 = app.Slider_2.Value;
-                    S3 = app.Slider_3.Value;
-                    S4 = app.Slider_4.Value;
-                    S5 = app.Slider_5.Value;
-
-                    %Calculating the new filters
-                    Mrplus = Mrp(app,Fs);
-                    b = num(app,target(app,S1,S2,S3,S4,S5), Mrplus);
-                end
-
-                %Filtering process
-                for n=1:11
-                    if n<11
-                        ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
-                        ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
+                    if length(xk(1,:))~=2
+                        xk = [xk,xk];
+                        xk1 = xk(:,1)';
+                        xk2 = xk(:,2)';
                     else
-                        ykNew1(n,:) = xk1*b(22);
-                        ykNew2(n,:) = xk2*b(22);
+                        xk1 = xk(:,1)';
+                        xk2 = xk(:,2)';
                     end
 
+                    if strcmp(app.PLAYButton.Text,'PLAY') == 1
+                        %Pause loop
+                        while strcmp(app.PLAYButton.Text,'PLAY') == 1 && ...
+                                app.isStop == 0
+                            pause(1);
+                        end
+                    end
+
+                    pause(0);
+
+                    %Checking if slider configuration changed
+                    if app.Slider_1.Value ~= S1 || app.Slider_2.Value ~= S2 || app.Slider_3.Value ~= S3 || S4 ~= app.Slider_4.Value ||  S5 ~= app.Slider_5.Value
+
+                        S1 = app.Slider_1.Value;
+                        S2 = app.Slider_2.Value;
+                        S3 = app.Slider_3.Value;
+                        S4 = app.Slider_4.Value;
+                        S5 = app.Slider_5.Value;
+
+                        %Calculating the new filters
+                        Mrplus = Mrp(app,Fs);
+                        b = num(app,target(app,S1,S2,S3,S4,S5), Mrplus);
+                    end
+
+                    %Filtering process
+                    for n=1:11
+                        if n<11
+                            ykNew1(n,:) = filterNew(app,b((2*n-1):(2*n)),xk1,ybuffer1(n,:),xbuffer1,Fs,n);
+                            ykNew2(n,:) = filterNew(app,b((2*n-1):(2*n)),xk2,ybuffer2(n,:),xbuffer2,Fs,n);
+                        else
+                            ykNew1(n,:) = xk1*b(22);
+                            ykNew2(n,:) = xk2*b(22);
+                        end
+
+                    end
+
+                    yk1=0;
+                    yk2=0;
+
+                    for n=1:11
+                        yk1=yk1 + ykNew1(n,:);
+
+                        yk2=yk2 + ykNew2(n,:);
+                    end
+
+                    %Playback of frame
+                    app.deviceWriter([0.25*yk1',0.25*yk2']);
+
+                    %Delay updates
+                    xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
+                    xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
+                    for n=1:10
+                        ybuffer1(n,:)=flip(ykNew1(n,...
+                            (length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
+
+                        ybuffer2(n,:)=flip(ykNew2(n,...
+                            (length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
+                    end
+
+
+                    if app.isStop == 1
+                        release(app.fileReader);
+                        release(app.deviceWriter);
+                        app.PLAYButton.Text = 'PLAY';
+                        app.isPlay = 0;
+                        app.isStop = 0;
+                    end
+
+                    i = i+1;
                 end
 
-                yk1=0;
-                yk2=0;
 
-                for n=1:11
-                    yk1=yk1 + ykNew1(n,:);
+                release(app.fileReader);
+                release(app.deviceWriter);
 
-                    yk2=yk2 + ykNew2(n,:);
-                end
-
-                %Playback of frame
-                deviceWriter([0.25*yk1',0.25*yk2']);
-
-                %Delay updates
-                xbuffer1 = flip(xk1(length(xk1)-1:length(xk1)));
-                xbuffer2 = flip(xk2(length(xk2)-1:length(xk2)));
-                for n=1:10
-                    ybuffer1(n,:)=flip(ykNew1(n,...
-                        (length(ykNew1(n,:))-2):(length(ykNew1(n,:)))));
-
-                    ybuffer2(n,:)=flip(ykNew2(n,...
-                        (length(ykNew2(n,:))-2):(length(ykNew2(n,:)))));
-                end
-
-
-                if app.isStop == 1
-                    release(fileReader);
-                    release(deviceWriter);
-                    app.PLAYButton.Text = 'PLAY';
-                    app.isPlay = 0;
-                    app.isStop = 0;
-                end
-
-                i = i+1;
-            end
-
-
-            release(fileReader);
-            release(deviceWriter);
-
-            app.PLAYButton.Text = 'PLAY';
-            app.isPlay = 0;
+                app.PLAYButton.Text = 'PLAY';
+                app.isPlay = 0;
 
             elseif strcmp(app.PLAYButton.Text,'PLAY') && ...
                     app.isPlay == 1
                 app.PLAYButton.Text = 'PAUSE';
             elseif app.isStop == 1
-                release(fileReader);
-                release(deviceWriter);
+                release(app.fileReader);
+                release(app.deviceWriter);
                 app.PLAYButton.Text = 'PLAY';
                 app.isPlay = 0;
                 app.isStop = 0;
@@ -512,17 +533,19 @@ classdef app1gui < matlab.apps.AppBase
 
         % Button pushed function: RESETButton
         function RESETButtonPushed(app, event)
-            % Stop playback if a song is playing
-            if ~isempty(app.player) && isplaying(app.player)
-                stop(app.player);
+            % Stop the song if it is currently playing
+            if app.isPlay
+                app.isStop = 1;
             end
 
             % Clear stored data
-            app.audioFilePath = '';
+            app.TrackDropDown.Value = {}; % Clear the selected audio file path
+
             app.audioSignal = [];
             app.sampleRate = [];
-            app.player = [];
-            app.timerObj = [];
+
+            release(app.fileReader);
+            release(app.deviceWriter);
 
             % Reset sliders and edit fields
             for i = 1:5
@@ -534,6 +557,7 @@ classdef app1gui < matlab.apps.AppBase
                 cla(app.(sprintf('UIAxes%d', i)));
             end
         end
+
     end
 
     % Component initialization
@@ -546,6 +570,19 @@ classdef app1gui < matlab.apps.AppBase
             app.UIFigure = uifigure('Visible', 'off');
             app.UIFigure.Position = [100 100 1204 553];
             app.UIFigure.Name = '5 Band Audio Equaliser';
+
+            % Load background image
+            backgroundImage = imread('D:\NUST EME\5th Semester\Signals_Systems\Lab\Project\Background.jpg');
+
+            % Set the background image
+            app.UIFigure.Color = 'none'; % Make the figure background transparent
+            app.UIFigure.Position = [100 100 1204 553];
+
+            % Create an axes to display the background image
+            app.UIAxesBackground = uiaxes(app.UIFigure, 'Visible', 'off');
+            app.UIAxesBackground.PlotBoxAspectRatio = [size(backgroundImage, 2) size(backgroundImage, 1) 1];
+            app.UIAxesBackground.Position = [-100 -180 1500 820];
+            imshow(backgroundImage, 'Parent', app.UIAxesBackground);
 
             % Create UIAxes
             app.UIAxes1 = uiaxes(app.UIFigure);
