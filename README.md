@@ -46,6 +46,9 @@ Welcome to the Signals and Systems MATLAB Labs repository! Dive into the excitin
 14. **Lab 14: Transfer Functions and their Step and Impulse Response**
     - Understand transfer functions and analyze step and impulse responses with MATLAB and Simulink.
 
+15. **Semester Project: MATLAB-Based Dynamic Audio Equaliser**
+    - Designing and Implementing a 5-band Graphic Equalizer with MATLAB and Simulink, followed by GUI development, aims to achieve flat frequency response using MATLAB-designed Butterworth filters and interactive features for audio manipulation.
+
 ## 🛠️ Getting Started
 
 To embark on your signals and systems journey, simply clone or download this repository to your local machine. Each lab comes complete with MATLAB scripts, functions, Simulink models, and MATLAB App Designer files to facilitate your exploration.
