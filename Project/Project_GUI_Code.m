@@ -195,7 +195,7 @@ classdef Project_GUI_Code < matlab.apps.AppBase
             center_frequencies = [63, 250, 1000, 4000, 16000];
             Q = sqrt(2);
             desired_order = 3;
-            Fs = 62000;
+            Fs = 48000;
 
             % Preallocate arrays for filter coefficients
             B = cell(1, length(center_frequencies));
@@ -539,13 +539,7 @@ classdef Project_GUI_Code < matlab.apps.AppBase
             end
 
             % Clear stored data
-            app.TrackDropDown.Value = {}; % Clear the selected audio file path
-
-            app.audioSignal = [];
-            app.sampleRate = [];
-
-            release(app.fileReader);
-            release(app.deviceWriter);
+            app.TrackDropDown.Items = {}; % Clear the items in the dropdown
 
             % Reset sliders and edit fields
             for i = 1:5
@@ -556,7 +550,16 @@ classdef Project_GUI_Code < matlab.apps.AppBase
                 plot(app.(sprintf('UIAxes%d', i)), NaN, NaN);
                 cla(app.(sprintf('UIAxes%d', i)));
             end
+
+            app.audioSignal = [];
+            app.sampleRate = [];
+
+            release(app.fileReader);
+            %release(app.deviceWriter);
+
+            %-+app.TrackDropDown.Value = ''; % Set the selected audio file path to empty string  
         end
+
 
     end
 
